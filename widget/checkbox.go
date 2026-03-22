@@ -67,6 +67,10 @@ const (
 )
 
 func (p *checkBoxPainter) Measure(node *core.Node, ws, hs core.MeasureSpec) core.Size {
+	scale := getDPIScale(node)
+	boxSize := checkBoxSize * scale
+	gap := checkBoxGap * scale
+
 	text := node.GetDataString("text")
 	s := node.GetStyle()
 	fontSize := 14.0
@@ -77,8 +81,8 @@ func (p *checkBoxPainter) Measure(node *core.Node, ws, hs core.MeasureSpec) core
 	charWidth := fontSize * 0.6
 	textWidth := float64(len([]rune(text))) * charWidth
 
-	w := checkBoxSize + checkBoxGap + textWidth
-	h := max(checkBoxSize, fontSize*1.4)
+	w := boxSize + gap + textWidth
+	h := max(boxSize, fontSize*1.4)
 
 	if ws.Mode == core.MeasureModeExact {
 		w = ws.Size
@@ -100,38 +104,41 @@ func (p *checkBoxPainter) Paint(node *core.Node, canvas core.Canvas) {
 		return
 	}
 	b := node.Bounds()
+	scale := getDPIScale(node)
+	boxSize := checkBoxSize * scale
+	gap := checkBoxGap * scale
 
 	// Position box vertically centered
 	boxX := 0.0
-	boxY := (b.Height - checkBoxSize) / 2
+	boxY := (b.Height - boxSize) / 2
 
 	primaryColor := core.ParseColor("#1976D2")
 
 	if p.cb.checked {
 		// Filled box with primary color
 		fillPaint := &core.Paint{Color: primaryColor, DrawStyle: core.PaintFill}
-		boxRect := core.Rect{X: boxX, Y: boxY, Width: checkBoxSize, Height: checkBoxSize}
-		canvas.DrawRoundRect(boxRect, 3, fillPaint)
+		boxRect := core.Rect{X: boxX, Y: boxY, Width: boxSize, Height: boxSize}
+		canvas.DrawRoundRect(boxRect, 3*scale, fillPaint)
 
 		// Draw checkmark (white)
 		checkPaint := &core.Paint{
 			Color:       color.RGBA{R: 255, G: 255, B: 255, A: 255},
 			DrawStyle:   core.PaintStroke,
-			StrokeWidth: 2,
+			StrokeWidth: 2 * scale,
 		}
 		// Short leg: bottom-left to bottom-center
-		canvas.DrawLine(boxX+4, boxY+10, boxX+8, boxY+14, checkPaint)
+		canvas.DrawLine(boxX+4*scale, boxY+10*scale, boxX+8*scale, boxY+14*scale, checkPaint)
 		// Long leg: bottom-center to top-right
-		canvas.DrawLine(boxX+8, boxY+14, boxX+16, boxY+5, checkPaint)
+		canvas.DrawLine(boxX+8*scale, boxY+14*scale, boxX+16*scale, boxY+5*scale, checkPaint)
 	} else {
 		// Empty box outline
 		borderPaint := &core.Paint{
 			Color:       color.RGBA{R: 117, G: 117, B: 117, A: 255},
 			DrawStyle:   core.PaintStroke,
-			StrokeWidth: 2,
+			StrokeWidth: 2 * scale,
 		}
-		boxRect := core.Rect{X: boxX, Y: boxY, Width: checkBoxSize, Height: checkBoxSize}
-		canvas.DrawRoundRect(boxRect, 3, borderPaint)
+		boxRect := core.Rect{X: boxX, Y: boxY, Width: boxSize, Height: boxSize}
+		canvas.DrawRoundRect(boxRect, 3*scale, borderPaint)
 	}
 
 	// Draw label text to the right of the box
@@ -147,7 +154,7 @@ func (p *checkBoxPainter) Paint(node *core.Node, canvas core.Canvas) {
 			FontFamily: s.FontFamily,
 			FontWeight: s.FontWeight,
 		}
-		textX := checkBoxSize + checkBoxGap
+		textX := boxSize + gap
 		// Vertically center text
 		textSize := canvas.MeasureText(text, textPaint)
 		textY := (b.Height - textSize.Height) / 2

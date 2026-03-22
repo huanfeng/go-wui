@@ -423,7 +423,10 @@ func (w *win32Window) dispatchMotion(action core.MotionAction, x, y float64, but
 	evt.RawY = y
 
 	// Use core.DispatchEvent for proper hit-testing and event bubbling
-	core.DispatchEvent(w.contentView, evt, core.Point{X: x, Y: y})
+	consumed := core.DispatchEvent(w.contentView, evt, core.Point{X: x, Y: y})
+	if consumed {
+		w.Invalidate() // repaint after state change
+	}
 }
 
 // dispatchScroll creates and dispatches a ScrollEvent through the node tree.
@@ -432,7 +435,10 @@ func (w *win32Window) dispatchScroll(x, y, deltaX, deltaY float64) {
 		return
 	}
 	evt := core.NewScrollEvent(x, y, deltaX, deltaY)
-	core.DispatchEvent(w.contentView, evt, core.Point{X: x, Y: y})
+	consumed := core.DispatchEvent(w.contentView, evt, core.Point{X: x, Y: y})
+	if consumed {
+		w.Invalidate() // repaint after scroll
+	}
 }
 
 // ---------- platform.Window implementation ----------
@@ -623,6 +629,9 @@ func (w *win32Window) render() {
 // scaleNodeTreeDPI recursively scales dp values (padding, font size, spacing)
 // by the DPI scale factor. This converts dp → physical pixels for rendering.
 func scaleNodeTreeDPI(node *core.Node, scale float64) {
+	// Store the DPI scale factor so widget painters can read it.
+	node.SetData("dpiScale", scale)
+
 	if scale == 1.0 {
 		return // No scaling needed at 96 DPI
 	}

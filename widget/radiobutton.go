@@ -73,6 +73,10 @@ const (
 )
 
 func (p *radioButtonPainter) Measure(node *core.Node, ws, hs core.MeasureSpec) core.Size {
+	scale := getDPIScale(node)
+	circleSize := radioCircleSize * scale
+	gap := radioGap * scale
+
 	text := node.GetDataString("text")
 	s := node.GetStyle()
 	fontSize := 14.0
@@ -83,8 +87,8 @@ func (p *radioButtonPainter) Measure(node *core.Node, ws, hs core.MeasureSpec) c
 	charWidth := fontSize * 0.6
 	textWidth := float64(len([]rune(text))) * charWidth
 
-	w := radioCircleSize + radioGap + textWidth
-	h := max(radioCircleSize, fontSize*1.4)
+	w := circleSize + gap + textWidth
+	h := max(circleSize, fontSize*1.4)
 
 	if ws.Mode == core.MeasureModeExact {
 		w = ws.Size
@@ -106,9 +110,14 @@ func (p *radioButtonPainter) Paint(node *core.Node, canvas core.Canvas) {
 		return
 	}
 	b := node.Bounds()
+	scale := getDPIScale(node)
+	circleRadius := radioCircleRadius * scale
+	innerRadius := radioInnerRadius * scale
+	circleSize := radioCircleSize * scale
+	gap := radioGap * scale
 
 	// Center the circle vertically
-	cx := radioCircleRadius
+	cx := circleRadius
 	cy := b.Height / 2
 
 	primaryColor := core.ParseColor("#1976D2")
@@ -117,12 +126,12 @@ func (p *radioButtonPainter) Paint(node *core.Node, canvas core.Canvas) {
 	outerPaint := &core.Paint{
 		Color:       color.RGBA{R: 117, G: 117, B: 117, A: 255},
 		DrawStyle:   core.PaintStroke,
-		StrokeWidth: 2,
+		StrokeWidth: 2 * scale,
 	}
 	if p.rb.selected {
 		outerPaint.Color = primaryColor
 	}
-	canvas.DrawCircle(cx, cy, radioCircleRadius, outerPaint)
+	canvas.DrawCircle(cx, cy, circleRadius, outerPaint)
 
 	// If selected, draw inner filled circle
 	if p.rb.selected {
@@ -130,7 +139,7 @@ func (p *radioButtonPainter) Paint(node *core.Node, canvas core.Canvas) {
 			Color:     primaryColor,
 			DrawStyle: core.PaintFill,
 		}
-		canvas.DrawCircle(cx, cy, radioInnerRadius, innerPaint)
+		canvas.DrawCircle(cx, cy, innerRadius, innerPaint)
 	}
 
 	// Draw label text to the right of the circle
@@ -146,7 +155,7 @@ func (p *radioButtonPainter) Paint(node *core.Node, canvas core.Canvas) {
 			FontFamily: s.FontFamily,
 			FontWeight: s.FontWeight,
 		}
-		textX := radioCircleSize + radioGap
+		textX := circleSize + gap
 		// Vertically center text
 		textSize := canvas.MeasureText(text, textPaint)
 		textY := (b.Height - textSize.Height) / 2

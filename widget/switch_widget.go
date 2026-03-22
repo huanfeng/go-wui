@@ -54,8 +54,9 @@ const (
 )
 
 func (p *switchPainter) Measure(node *core.Node, ws, hs core.MeasureSpec) core.Size {
-	w := switchTrackWidth
-	h := switchTrackHeight
+	scale := getDPIScale(node)
+	w := switchTrackWidth * scale
+	h := switchTrackHeight * scale
 
 	if ws.Mode == core.MeasureModeExact {
 		w = ws.Size
@@ -73,6 +74,9 @@ func (p *switchPainter) Measure(node *core.Node, ws, hs core.MeasureSpec) core.S
 
 func (p *switchPainter) Paint(node *core.Node, canvas core.Canvas) {
 	b := node.Bounds()
+	scale := getDPIScale(node)
+	thumbRadius := switchThumbRadius * scale
+	thumbInset := switchThumbInset * scale
 
 	// Track colors
 	var trackColor color.RGBA
@@ -96,13 +100,13 @@ func (p *switchPainter) Paint(node *core.Node, canvas core.Canvas) {
 	var thumbCX float64
 	if p.sw.on {
 		// Thumb on right side
-		thumbCX = b.Width - switchThumbInset - switchThumbRadius
+		thumbCX = b.Width - thumbInset - thumbRadius
 	} else {
 		// Thumb on left side
-		thumbCX = switchThumbInset + switchThumbRadius
+		thumbCX = thumbInset + thumbRadius
 	}
 
-	canvas.DrawCircle(thumbCX, thumbCY, switchThumbRadius, thumbPaint)
+	canvas.DrawCircle(thumbCX, thumbCY, thumbRadius, thumbPaint)
 }
 
 // switchHandler handles click events to toggle the switch state.
