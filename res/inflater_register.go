@@ -10,6 +10,8 @@ import (
 func RegisterBuiltinViews(li *LayoutInflater) {
 	li.RegisterView("LinearLayout", inflateLinearLayout)
 	li.RegisterView("FrameLayout", inflateFrameLayout)
+	li.RegisterView("ScrollView", inflateScrollView)
+	li.RegisterView("HorizontalScrollView", inflateHorizontalScrollView)
 	li.RegisterView("View", inflateView)
 	li.RegisterView("TextView", inflateTextView)
 	li.RegisterView("ImageView", inflateImageView)
@@ -180,6 +182,18 @@ func inflateRadioGroup(attrs *AttributeSet) *core.Node {
 	rg := widget.NewRadioGroup()
 	applyCommonAttrs(rg.Node(), attrs)
 	return rg.Node()
+}
+
+func inflateScrollView(attrs *AttributeSet) *core.Node {
+	sv := widget.NewScrollView()
+	applyCommonAttrs(sv.Node(), attrs)
+	return sv.Node()
+}
+
+func inflateHorizontalScrollView(attrs *AttributeSet) *core.Node {
+	sv := widget.NewHorizontalScrollView()
+	applyCommonAttrs(sv.Node(), attrs)
+	return sv.Node()
 }
 
 func inflateProgressBar(attrs *AttributeSet) *core.Node {
