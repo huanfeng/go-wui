@@ -190,6 +190,8 @@ type win32Window struct {
 
 	contentView  *core.Node
 	textRenderer core.TextRenderer
+	dpiScale     float64 // DPI scale factor (1.0 at 96 DPI, 1.5 at 144 DPI)
+	dpiScaled    bool    // true after node tree has been DPI-scaled
 
 	onClose        func() bool
 	onResize       func(w, h int)
@@ -263,7 +265,19 @@ func newWin32Window(plat *WindowsPlatform, opts platform.WindowOptions) (*win32W
 		y = opts.Y
 	}
 
-	// Determine size
+	// Determine size — scale dp to physical pixels using system DPI.
+	// After DPI awareness is enabled, CreateWindowExW expects physical pixels.
+	sysDPI := 96.0
+	if procGetDpiForWindow.Find() == nil {
+		// Before window exists, use GetDpiForSystem or default
+		getDpiForSystem := syscall.NewLazyDLL("user32.dll").NewProc("GetDpiForSystem")
+		if getDpiForSystem.Find() == nil {
+			d, _, _ := getDpiForSystem.Call()
+			if d > 0 {
+				sysDPI = float64(d)
+			}
+		}
+	}
 	width := opts.Width
 	height := opts.Height
 	if width <= 0 {
@@ -272,6 +286,9 @@ func newWin32Window(plat *WindowsPlatform, opts platform.WindowOptions) (*win32W
 	if height <= 0 {
 		height = 600
 	}
+	// Scale from dp to physical pixels
+	width = int(DpToPx(float64(width), sysDPI))
+	height = int(DpToPx(float64(height), sysDPI))
 
 	title := syscall.StringToUTF16Ptr(opts.Title)
 
@@ -484,8 +501,19 @@ func (w *win32Window) GetPosition() core.Point {
 	return core.Point{X: float64(r.Left), Y: float64(r.Top)}
 }
 
+var procGetDpiForWindow *syscall.LazyProc
+
+func init() {
+	procGetDpiForWindow = syscall.NewLazyDLL("user32.dll").NewProc("GetDpiForWindow")
+}
+
 func (w *win32Window) GetDPI() float64 {
-	// Phase 1: return system default DPI
+	if procGetDpiForWindow.Find() == nil {
+		dpi, _, _ := procGetDpiForWindow.Call(w.hwnd)
+		if dpi > 0 {
+			return float64(dpi)
+		}
+	}
 	return 96.0
 }
 
@@ -534,6 +562,18 @@ func (w *win32Window) render() {
 		return
 	}
 
+	// Update DPI scale factor
+	w.dpiScale = w.GetDPI() / 96.0
+	if w.dpiScale < 1.0 {
+		w.dpiScale = 1.0
+	}
+
+	// Scale dp values in the node tree to physical pixels (once)
+	if !w.dpiScaled {
+		scaleNodeTreeDPI(contentView, w.dpiScale)
+		w.dpiScaled = true
+	}
+
 	// Create canvas with cached text renderer
 	if w.textRenderer == nil {
 		w.textRenderer = w.plat.CreateTextRenderer()
@@ -557,6 +597,62 @@ func (w *win32Window) render() {
 
 	// Present: BitBlt canvas to window
 	w.present(canvas.Target())
+}
+
+// scaleNodeTreeDPI recursively scales dp values (padding, font size, spacing)
+// by the DPI scale factor. This converts dp → physical pixels for rendering.
+func scaleNodeTreeDPI(node *core.Node, scale float64) {
+	if scale == 1.0 {
+		return // No scaling needed at 96 DPI
+	}
+
+	// Scale padding
+	p := node.Padding()
+	node.SetPadding(core.Insets{
+		Left:   p.Left * scale,
+		Top:    p.Top * scale,
+		Right:  p.Right * scale,
+		Bottom: p.Bottom * scale,
+	})
+
+	// Scale margin
+	m := node.Margin()
+	node.SetMargin(core.Insets{
+		Left:   m.Left * scale,
+		Top:    m.Top * scale,
+		Right:  m.Right * scale,
+		Bottom: m.Bottom * scale,
+	})
+
+	// Scale style dimensions
+	if s := node.GetStyle(); s != nil {
+		if s.FontSize > 0 {
+			s.FontSize *= scale
+		}
+		if s.CornerRadius > 0 {
+			s.CornerRadius *= scale
+		}
+		if s.BorderWidth > 0 {
+			s.BorderWidth *= scale
+		}
+		// Scale fixed dp dimensions
+		if s.Width.Unit == core.DimensionDp && s.Width.Value > 0 {
+			s.Width.Value *= scale
+		}
+		if s.Height.Unit == core.DimensionDp && s.Height.Value > 0 {
+			s.Height.Value *= scale
+		}
+	}
+
+	// Scale LinearLayout spacing
+	if ll, ok := node.GetLayout().(*layout.LinearLayout); ok {
+		ll.Spacing *= scale
+	}
+
+	// Recurse children
+	for _, child := range node.Children() {
+		scaleNodeTreeDPI(child, scale)
+	}
 }
 
 // PaintNode recursively paints a node tree onto a canvas.

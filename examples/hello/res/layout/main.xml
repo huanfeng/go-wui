@@ -4,6 +4,7 @@
     height="match_parent"
     orientation="vertical"
     padding="24dp"
+    spacing="16dp"
     background="@color/background">
 
     <TextView

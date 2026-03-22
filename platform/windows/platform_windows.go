@@ -1,6 +1,8 @@
 package windows
 
 import (
+	"syscall"
+
 	"gowui/core"
 	"gowui/platform"
 )
@@ -11,8 +13,31 @@ type WindowsPlatform struct {
 }
 
 // NewPlatform creates a new Windows platform instance.
+// Sets Per-Monitor V2 DPI awareness so windows render at full resolution.
 func NewPlatform() *WindowsPlatform {
+	enableDPIAwareness()
 	return &WindowsPlatform{quitCh: make(chan struct{})}
+}
+
+// enableDPIAwareness sets the process as Per-Monitor V2 DPI-aware.
+// This ensures GetClientRect returns physical pixels and text renders crisply.
+func enableDPIAwareness() {
+	user32 := syscall.NewLazyDLL("user32.dll")
+
+	// Try Per-Monitor V2 first (Windows 10 1703+)
+	setDpiAwarenessCtx := user32.NewProc("SetProcessDpiAwarenessContext")
+	if setDpiAwarenessCtx.Find() == nil {
+		// DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+		setDpiAwarenessCtx.Call(^uintptr(3)) // -4 as uintptr
+		return
+	}
+
+	// Fallback: Per-Monitor V1 (Windows 8.1+)
+	shcore := syscall.NewLazyDLL("shcore.dll")
+	setDpiAwareness := shcore.NewProc("SetProcessDpiAwareness")
+	if setDpiAwareness.Find() == nil {
+		setDpiAwareness.Call(2) // PROCESS_PER_MONITOR_DPI_AWARE
+	}
 }
 
 func (p *WindowsPlatform) OS() platform.OSType { return platform.OSWindows }
