@@ -7,23 +7,34 @@ import (
 	"gowui/core"
 )
 
+// hasColor checks that at least one of R, G, B channels is non-zero and alpha
+// is non-zero. With anti-aliasing, exact values may differ from the input
+// color, so we just verify "something was drawn".
+func hasColor(t *testing.T, c *GGCanvas, x, y int, desc string) {
+	t.Helper()
+	r, g, b, a := c.Target().At(x, y).RGBA()
+	if (r == 0 && g == 0 && b == 0) || a == 0 {
+		t.Errorf("%s: expected non-transparent colored pixel at (%d,%d), got RGBA(%d,%d,%d,%d)",
+			desc, x, y, r, g, b, a)
+	}
+}
+
+// isTransparent checks that the pixel is fully transparent (alpha == 0).
+func isTransparent(t *testing.T, c *GGCanvas, x, y int, desc string) {
+	t.Helper()
+	_, _, _, a := c.Target().At(x, y).RGBA()
+	if a != 0 {
+		t.Errorf("%s: expected transparent pixel at (%d,%d), got alpha=%d", desc, x, y, a)
+	}
+}
+
 func TestGGCanvasDrawRect(t *testing.T) {
 	c := NewGGCanvas(100, 100, nil)
 	paint := &core.Paint{Color: color.RGBA{R: 255, A: 255}, DrawStyle: core.PaintFill}
 	c.DrawRect(core.Rect{X: 10, Y: 10, Width: 50, Height: 50}, paint)
-	img := c.Target()
 
-	// Inside the rect
-	r, _, _, a := img.At(25, 25).RGBA()
-	if r == 0 || a == 0 {
-		t.Error("expected non-zero red pixel at (25,25)")
-	}
-
-	// Outside the rect
-	_, _, _, a2 := img.At(5, 5).RGBA()
-	if a2 != 0 {
-		t.Error("expected transparent pixel outside rect at (5,5)")
-	}
+	hasColor(t, c, 25, 25, "inside rect")
+	isTransparent(t, c, 5, 5, "outside rect")
 }
 
 func TestGGCanvasDrawRectStroke(t *testing.T) {
@@ -34,19 +45,12 @@ func TestGGCanvasDrawRectStroke(t *testing.T) {
 		StrokeWidth: 2,
 	}
 	c.DrawRect(core.Rect{X: 10, Y: 10, Width: 50, Height: 50}, paint)
-	img := c.Target()
 
 	// On the top edge
-	r, _, _, a := img.At(30, 10).RGBA()
-	if r == 0 || a == 0 {
-		t.Error("expected red pixel on top stroke at (30,10)")
-	}
+	hasColor(t, c, 30, 10, "top stroke edge")
 
 	// Interior should be empty
-	_, _, _, a2 := img.At(35, 35).RGBA()
-	if a2 != 0 {
-		t.Error("expected transparent pixel in interior of stroked rect at (35,35)")
-	}
+	isTransparent(t, c, 35, 35, "interior of stroked rect")
 }
 
 func TestGGCanvasSaveRestore(t *testing.T) {
@@ -57,9 +61,8 @@ func TestGGCanvasSaveRestore(t *testing.T) {
 
 	paint := &core.Paint{Color: color.RGBA{G: 255, A: 255}, DrawStyle: core.PaintFill}
 	c.DrawRect(core.Rect{X: 0, Y: 0, Width: 10, Height: 10}, paint)
-	img := c.Target()
 
-	_, g, _, _ := img.At(5, 5).RGBA()
+	_, g, _, _ := c.Target().At(5, 5).RGBA()
 	if g == 0 {
 		t.Error("expected green pixel at original position after restore")
 	}
@@ -70,19 +73,15 @@ func TestGGCanvasTranslate(t *testing.T) {
 	c.Translate(20, 20)
 	paint := &core.Paint{Color: color.RGBA{B: 255, A: 255}, DrawStyle: core.PaintFill}
 	c.DrawRect(core.Rect{X: 0, Y: 0, Width: 10, Height: 10}, paint)
-	img := c.Target()
 
 	// Rect should be at (20, 20) due to translate
-	_, _, b, _ := img.At(25, 25).RGBA()
+	_, _, b, _ := c.Target().At(25, 25).RGBA()
 	if b == 0 {
 		t.Error("expected blue pixel at translated position (25,25)")
 	}
 
 	// Original position should be empty
-	_, _, b2, a2 := img.At(5, 5).RGBA()
-	if b2 != 0 && a2 != 0 {
-		t.Error("expected no blue pixel at original position (5,5)")
-	}
+	isTransparent(t, c, 5, 5, "original position after translate")
 }
 
 func TestGGCanvasClipRect(t *testing.T) {
@@ -91,71 +90,46 @@ func TestGGCanvasClipRect(t *testing.T) {
 	paint := &core.Paint{Color: color.RGBA{R: 255, G: 255, A: 255}, DrawStyle: core.PaintFill}
 	// Draw a rect that extends beyond the clip
 	c.DrawRect(core.Rect{X: 0, Y: 0, Width: 100, Height: 100}, paint)
-	img := c.Target()
 
 	// Inside clip: should have the color
-	r, g, _, a := img.At(30, 30).RGBA()
-	if r == 0 || g == 0 || a == 0 {
-		t.Error("expected yellow pixel inside clip at (30,30)")
-	}
+	hasColor(t, c, 30, 30, "inside clip")
 
 	// Outside clip: should be transparent
-	_, _, _, a2 := img.At(5, 5).RGBA()
-	if a2 != 0 {
-		t.Error("expected transparent pixel outside clip at (5,5)")
-	}
+	isTransparent(t, c, 5, 5, "outside clip")
 }
 
 func TestGGCanvasDrawCircle(t *testing.T) {
 	c := NewGGCanvas(100, 100, nil)
 	paint := &core.Paint{Color: color.RGBA{R: 128, G: 128, B: 255, A: 255}, DrawStyle: core.PaintFill}
 	c.DrawCircle(50, 50, 20, paint)
-	img := c.Target()
 
 	// Center should be filled
-	_, _, b, a := img.At(50, 50).RGBA()
-	if b == 0 || a == 0 {
-		t.Error("expected non-zero blue pixel at circle center (50,50)")
-	}
+	hasColor(t, c, 50, 50, "circle center")
 
 	// Far outside the circle
-	_, _, _, a2 := img.At(5, 5).RGBA()
-	if a2 != 0 {
-		t.Error("expected transparent pixel outside circle at (5,5)")
-	}
+	isTransparent(t, c, 5, 5, "outside circle")
 }
 
 func TestGGCanvasDrawLine(t *testing.T) {
 	c := NewGGCanvas(100, 100, nil)
 	paint := &core.Paint{Color: color.RGBA{R: 255, A: 255}, DrawStyle: core.PaintStroke}
 	c.DrawLine(0, 0, 99, 99, paint)
-	img := c.Target()
 
 	// Diagonal line: pixel near the middle
-	r, _, _, a := img.At(50, 50).RGBA()
-	if r == 0 || a == 0 {
-		t.Error("expected red pixel on the diagonal line at (50,50)")
-	}
+	hasColor(t, c, 50, 50, "diagonal line midpoint")
 }
 
 func TestGGCanvasDrawRoundRect(t *testing.T) {
 	c := NewGGCanvas(100, 100, nil)
 	paint := &core.Paint{Color: color.RGBA{G: 200, A: 255}, DrawStyle: core.PaintFill}
 	c.DrawRoundRect(core.Rect{X: 10, Y: 10, Width: 60, Height: 60}, 10, paint)
-	img := c.Target()
 
 	// Center should be filled
-	_, g, _, a := img.At(40, 40).RGBA()
-	if g == 0 || a == 0 {
-		t.Error("expected green pixel at center of round rect (40,40)")
-	}
+	hasColor(t, c, 40, 40, "center of round rect")
 
 	// A corner pixel that is outside the rounded corner should be empty.
 	// (10,10) is the exact corner — with radius 10, this pixel is outside the curve.
-	_, _, _, a2 := img.At(10, 10).RGBA()
-	if a2 != 0 {
-		t.Error("expected transparent pixel at rounded corner (10,10)")
-	}
+	isTransparent(t, c, 10, 10, "rounded corner")
 }
 
 func TestGGCanvasDrawImage(t *testing.T) {
@@ -176,17 +150,9 @@ func TestGGCanvasDrawImage(t *testing.T) {
 	}
 
 	c.DrawImage(&srcImg, core.Rect{X: 20, Y: 20, Width: 10, Height: 10})
-	img := c.Target()
 
-	r, _, _, a := img.At(25, 25).RGBA()
-	if r == 0 || a == 0 {
-		t.Error("expected red pixel from drawn image at (25,25)")
-	}
-
-	_, _, _, a2 := img.At(5, 5).RGBA()
-	if a2 != 0 {
-		t.Error("expected transparent pixel outside drawn image at (5,5)")
-	}
+	hasColor(t, c, 25, 25, "drawn image pixel")
+	isTransparent(t, c, 5, 5, "outside drawn image")
 }
 
 func TestGGCanvasNilPaintNoOp(t *testing.T) {
@@ -207,17 +173,9 @@ func TestGGCanvasTranslateStacking(t *testing.T) {
 	// Total offset should be (20, 20)
 	paint := &core.Paint{Color: color.RGBA{R: 255, A: 255}, DrawStyle: core.PaintFill}
 	c.DrawRect(core.Rect{X: 0, Y: 0, Width: 5, Height: 5}, paint)
-	img := c.Target()
 
-	r, _, _, a := img.At(22, 22).RGBA()
-	if r == 0 || a == 0 {
-		t.Error("expected red pixel at (22,22) after double translate")
-	}
-
-	_, _, _, a2 := img.At(5, 5).RGBA()
-	if a2 != 0 {
-		t.Error("expected transparent pixel at (5,5) after double translate")
-	}
+	hasColor(t, c, 22, 22, "after double translate")
+	isTransparent(t, c, 5, 5, "original position after double translate")
 }
 
 func TestGGCanvasClipWithTranslate(t *testing.T) {
@@ -227,17 +185,10 @@ func TestGGCanvasClipWithTranslate(t *testing.T) {
 	// Clip should be at (10, 10) to (30, 30) in image space
 	paint := &core.Paint{Color: color.RGBA{B: 255, A: 255}, DrawStyle: core.PaintFill}
 	c.DrawRect(core.Rect{X: -100, Y: -100, Width: 500, Height: 500}, paint)
-	img := c.Target()
 
 	// Inside clip
-	_, _, b, a := img.At(20, 20).RGBA()
-	if b == 0 || a == 0 {
-		t.Error("expected blue pixel inside clip at (20,20)")
-	}
+	hasColor(t, c, 20, 20, "inside clip with translate")
 
 	// Outside clip
-	_, _, _, a2 := img.At(5, 5).RGBA()
-	if a2 != 0 {
-		t.Error("expected transparent pixel outside clip at (5,5)")
-	}
+	isTransparent(t, c, 5, 5, "outside clip with translate")
 }
