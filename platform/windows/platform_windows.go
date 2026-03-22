@@ -87,7 +87,11 @@ func (p *WindowsPlatform) GetSystemTheme() platform.ThemeMode {
 }
 
 func (p *WindowsPlatform) CreateNativeEditText(parent platform.Window) platform.NativeEditText {
-	return nil
+	w, ok := parent.(*win32Window)
+	if !ok {
+		return nil
+	}
+	return newNativeEdit(w.hwnd)
 }
 
 func (p *WindowsPlatform) ShowMessageDialog(opts platform.MessageDialogOptions) platform.DialogResult {

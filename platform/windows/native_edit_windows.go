@@ -1,0 +1,300 @@
+package windows
+
+import (
+	"sync"
+	"syscall"
+	"unsafe"
+
+	"gowui/core"
+	"gowui/platform"
+)
+
+// Win32 EDIT control styles and messages.
+const (
+	wsChild      = 0x40000000
+	wsBorder     = 0x00800000
+	wsTabStop    = 0x00010000
+	esLeft       = 0x0000
+	esCenter     = 0x0001
+	esMultiLine  = 0x0004
+	esPassword   = 0x0020
+	esAutoHScroll = 0x0080
+	esAutoVScroll = 0x0040
+	esNumber     = 0x2000
+
+	wmSetText       = 0x000C
+	wmGetText       = 0x000D
+	wmGetTextLength = 0x000E
+	wmSetFont       = 0x0030
+	wmCommand       = 0x0111
+	enChange        = 0x0300
+
+	emSetSel       = 0x00B1
+	emSetCueBanner = 0x1501
+	emSetLimitText = 0x00C5
+)
+
+// procSendMessageW and procSetFocus are loaded lazily so that the
+// native_edit module does not duplicate declarations from other files.
+var (
+	nativeEditProcsOnce sync.Once
+	procSendMessageW    *syscall.LazyProc
+	procSetFocus        *syscall.LazyProc
+	procIsDialogMessageW *syscall.LazyProc
+)
+
+func initNativeEditProcs() {
+	nativeEditProcsOnce.Do(func() {
+		u32 := syscall.NewLazyDLL("user32.dll")
+		procSendMessageW = u32.NewProc("SendMessageW")
+		procSetFocus = u32.NewProc("SetFocus")
+		procIsDialogMessageW = u32.NewProc("IsDialogMessageW")
+	})
+}
+
+// win32NativeEdit wraps a Win32 EDIT control and implements platform.NativeEditText.
+type win32NativeEdit struct {
+	hwnd       uintptr // EDIT control HWND
+	parentHwnd uintptr // parent window HWND
+	node       *core.Node
+	hFont      uintptr // GDI font handle
+
+	multiLine bool
+	inputType platform.InputType
+	style     uintptr // current window style bits
+
+	onTextChanged func(string)
+	onSubmit      func(string)
+}
+
+// newNativeEdit creates a hidden Win32 EDIT control as a child of parentHwnd.
+func newNativeEdit(parentHwnd uintptr) *win32NativeEdit {
+	initNativeEditProcs()
+	initGDITextProcs() // ensure procCreateFontW is available
+
+	editClass, _ := syscall.UTF16PtrFromString("EDIT")
+	style := uintptr(wsChild | wsBorder | esAutoHScroll | wsTabStop)
+
+	hInstance, _, _ := procGetModuleHandleW.Call(0)
+
+	hwnd, _, _ := procCreateWindowExW.Call(
+		0, // dwExStyle
+		uintptr(unsafe.Pointer(editClass)),
+		0, // lpWindowName (no initial text)
+		style,
+		0, 0, 100, 30, // x, y, width, height — will be updated by AttachToNode
+		parentHwnd,
+		0, // hMenu
+		hInstance,
+		0, // lpParam
+	)
+
+	return &win32NativeEdit{
+		hwnd:       hwnd,
+		parentHwnd: parentHwnd,
+		style:      style,
+	}
+}
+
+// ---------- platform.NativeEditText implementation ----------
+
+func (e *win32NativeEdit) AttachToNode(node *core.Node) {
+	e.node = node
+	b := node.Bounds()
+
+	// Walk up the tree to compute the absolute position within the window.
+	absX, absY := 0.0, 0.0
+	for n := node; n != nil; n = n.Parent() {
+		nb := n.Bounds()
+		absX += nb.X
+		absY += nb.Y
+	}
+
+	procMoveWindow.Call(
+		e.hwnd,
+		uintptr(int(absX)),
+		uintptr(int(absY)),
+		uintptr(int(b.Width)),
+		uintptr(int(b.Height)),
+		1, // bRepaint
+	)
+	procShowWindow.Call(e.hwnd, SW_SHOW)
+}
+
+func (e *win32NativeEdit) Detach() {
+	procShowWindow.Call(e.hwnd, SW_HIDE)
+	e.node = nil
+}
+
+func (e *win32NativeEdit) GetText() string {
+	length, _, _ := procSendMessageW.Call(e.hwnd, wmGetTextLength, 0, 0)
+	if length == 0 {
+		return ""
+	}
+	buf := make([]uint16, length+1)
+	procSendMessageW.Call(e.hwnd, wmGetText, length+1, uintptr(unsafe.Pointer(&buf[0])))
+	return syscall.UTF16ToString(buf)
+}
+
+func (e *win32NativeEdit) SetText(text string) {
+	t, _ := syscall.UTF16PtrFromString(text)
+	procSendMessageW.Call(e.hwnd, wmSetText, 0, uintptr(unsafe.Pointer(t)))
+}
+
+func (e *win32NativeEdit) SetPlaceholder(text string) {
+	// EM_SETCUEBANNER is available on Windows Vista+ (comctl32 v6).
+	t, _ := syscall.UTF16PtrFromString(text)
+	procSendMessageW.Call(e.hwnd, emSetCueBanner, 1, uintptr(unsafe.Pointer(t)))
+}
+
+func (e *win32NativeEdit) SetFont(family string, size float64, weight int) {
+	if e.hFont != 0 {
+		procDeleteObject.Call(e.hFont)
+	}
+	fontName, _ := syscall.UTF16PtrFromString(family)
+	if weight <= 0 {
+		weight = 400
+	}
+	e.hFont, _, _ = procCreateFontW.Call(
+		uintptr(-int32(size)), // nHeight (negative = character height)
+		0,                     // nWidth
+		0,                     // nEscapement
+		0,                     // nOrientation
+		uintptr(weight),       // fnWeight
+		0,                     // fdwItalic
+		0,                     // fdwUnderline
+		0,                     // fdwStrikeOut
+		1,                     // fdwCharSet (DEFAULT_CHARSET)
+		0,                     // fdwOutputPrecision
+		0,                     // fdwClipPrecision
+		5,                     // fdwQuality (CLEARTYPE_QUALITY)
+		0,                     // fdwPitchAndFamily
+		uintptr(unsafe.Pointer(fontName)),
+	)
+	procSendMessageW.Call(e.hwnd, wmSetFont, e.hFont, 1)
+}
+
+func (e *win32NativeEdit) SetTextColor(_ interface{}) {
+	// Phase 2: requires WM_CTLCOLOREDIT handling in parent wndProc.
+}
+
+func (e *win32NativeEdit) SetBackgroundColor(_ interface{}) {
+	// Phase 2: requires WM_CTLCOLOREDIT handling in parent wndProc.
+}
+
+func (e *win32NativeEdit) SetMultiLine(multiLine bool) {
+	if e.multiLine == multiLine {
+		return
+	}
+	e.multiLine = multiLine
+	// Recreating the control is the simplest way to toggle ES_MULTILINE
+	// because that style cannot be changed after creation.
+	e.recreateControl()
+}
+
+func (e *win32NativeEdit) SetMaxLength(max int) {
+	if max <= 0 {
+		max = 0 // 0 = default limit (32 KB for single-line, 64 KB for multi-line)
+	}
+	procSendMessageW.Call(e.hwnd, emSetLimitText, uintptr(max), 0)
+}
+
+func (e *win32NativeEdit) SetInputType(inputType platform.InputType) {
+	if e.inputType == inputType {
+		return
+	}
+	e.inputType = inputType
+	e.recreateControl()
+}
+
+func (e *win32NativeEdit) SetOnTextChanged(fn func(text string)) {
+	e.onTextChanged = fn
+}
+
+func (e *win32NativeEdit) SetOnSubmit(fn func(text string)) {
+	e.onSubmit = fn
+}
+
+func (e *win32NativeEdit) Focus() {
+	procSetFocus.Call(e.hwnd)
+}
+
+func (e *win32NativeEdit) ClearFocus() {
+	// Set focus back to the parent window.
+	procSetFocus.Call(e.parentHwnd)
+}
+
+// ---------- Internal helpers ----------
+
+// recreateControl destroys the current EDIT control and creates a new one
+// with the updated style flags, preserving text and position.
+func (e *win32NativeEdit) recreateControl() {
+	// Save state.
+	oldText := e.GetText()
+	visible, _, _ := procIsWindowVisible.Call(e.hwnd)
+
+	// Determine position from the existing window.
+	var rc RECT
+	procGetWindowRect.Call(e.hwnd, uintptr(unsafe.Pointer(&rc)))
+	// Convert screen coords to parent-client coords.
+	pt := POINT{X: rc.Left, Y: rc.Top}
+	procScreenToClient.Call(e.parentHwnd, uintptr(unsafe.Pointer(&pt)))
+	width := rc.Right - rc.Left
+	height := rc.Bottom - rc.Top
+
+	// Destroy old control.
+	procDestroyWindow.Call(e.hwnd)
+
+	// Build new style.
+	style := uintptr(wsChild | wsBorder | wsTabStop | esAutoHScroll)
+	if e.multiLine {
+		style |= esMultiLine | esAutoVScroll
+		style &^= esAutoHScroll // multiline typically wants word wrap
+	}
+	switch e.inputType {
+	case platform.InputTypePassword:
+		style |= esPassword
+	case platform.InputTypeNumber:
+		style |= esNumber
+	}
+
+	editClass, _ := syscall.UTF16PtrFromString("EDIT")
+	hInstance, _, _ := procGetModuleHandleW.Call(0)
+
+	e.hwnd, _, _ = procCreateWindowExW.Call(
+		0,
+		uintptr(unsafe.Pointer(editClass)),
+		0,
+		style,
+		uintptr(pt.X), uintptr(pt.Y),
+		uintptr(width), uintptr(height),
+		e.parentHwnd,
+		0,
+		hInstance,
+		0,
+	)
+	e.style = style
+
+	// Restore state.
+	if oldText != "" {
+		e.SetText(oldText)
+	}
+	if e.hFont != 0 {
+		procSendMessageW.Call(e.hwnd, wmSetFont, e.hFont, 1)
+	}
+	if visible != 0 {
+		procShowWindow.Call(e.hwnd, SW_SHOW)
+	}
+}
+
+// Destroy releases all GDI resources and removes the native control.
+func (e *win32NativeEdit) Destroy() {
+	if e.hFont != 0 {
+		procDeleteObject.Call(e.hFont)
+		e.hFont = 0
+	}
+	if e.hwnd != 0 {
+		procDestroyWindow.Call(e.hwnd)
+		e.hwnd = 0
+	}
+}
