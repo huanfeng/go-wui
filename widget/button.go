@@ -158,7 +158,7 @@ type buttonHandler struct {
 	btn *Button
 }
 
-func (h *buttonHandler) OnEvent(node *core.Node, event interface{}) bool {
+func (h *buttonHandler) OnEvent(node *core.Node, event core.Event) bool {
 	me, ok := event.(*core.MotionEvent)
 	if !ok {
 		return false

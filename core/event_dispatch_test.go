@@ -14,11 +14,11 @@ func TestEventDispatch_BubbleUp(t *testing.T) {
 	leaf.SetBounds(Rect{X: 0, Y: 0, Width: 100, Height: 100})
 
 	var received []string
-	child.SetHandler(&testHandler{onEvent: func(n *Node, e interface{}) bool {
+	child.SetHandler(&testHandler{onEvent: func(n *Node, e Event) bool {
 		received = append(received, "child")
 		return false
 	}})
-	root.SetHandler(&testHandler{onEvent: func(n *Node, e interface{}) bool {
+	root.SetHandler(&testHandler{onEvent: func(n *Node, e Event) bool {
 		received = append(received, "root")
 		return true
 	}})
@@ -40,10 +40,10 @@ func TestEventDispatch_Consumed(t *testing.T) {
 	child.SetBounds(Rect{X: 0, Y: 0, Width: 100, Height: 100})
 
 	rootCalled := false
-	child.SetHandler(&testHandler{onEvent: func(n *Node, e interface{}) bool {
+	child.SetHandler(&testHandler{onEvent: func(n *Node, e Event) bool {
 		return true // consumed
 	}})
-	root.SetHandler(&testHandler{onEvent: func(n *Node, e interface{}) bool {
+	root.SetHandler(&testHandler{onEvent: func(n *Node, e Event) bool {
 		rootCalled = true
 		return false
 	}})
@@ -67,17 +67,17 @@ func TestEventDispatch_Intercept(t *testing.T) {
 	leaf.SetBounds(Rect{X: 0, Y: 0, Width: 100, Height: 100})
 
 	leafCalled := false
-	leaf.SetHandler(&testHandler{onEvent: func(n *Node, e interface{}) bool {
+	leaf.SetHandler(&testHandler{onEvent: func(n *Node, e Event) bool {
 		leafCalled = true
 		return true
 	}})
 
 	var interceptedBy string
 	child.SetHandler(&interceptHandler{
-		onIntercept: func(n *Node, e interface{}) bool {
+		onIntercept: func(n *Node, e Event) bool {
 			return true // intercept
 		},
-		onEvent: func(n *Node, e interface{}) bool {
+		onEvent: func(n *Node, e Event) bool {
 			interceptedBy = "child"
 			return true
 		},
@@ -145,10 +145,10 @@ func TestMotionEvent_Fields(t *testing.T) {
 
 type testHandler struct {
 	DefaultHandler
-	onEvent func(*Node, interface{}) bool
+	onEvent func(*Node, Event) bool
 }
 
-func (h *testHandler) OnEvent(node *Node, event interface{}) bool {
+func (h *testHandler) OnEvent(node *Node, event Event) bool {
 	if h.onEvent != nil {
 		return h.onEvent(node, event)
 	}
@@ -157,18 +157,18 @@ func (h *testHandler) OnEvent(node *Node, event interface{}) bool {
 
 type interceptHandler struct {
 	DefaultHandler
-	onIntercept func(*Node, interface{}) bool
-	onEvent     func(*Node, interface{}) bool
+	onIntercept func(*Node, Event) bool
+	onEvent     func(*Node, Event) bool
 }
 
-func (h *interceptHandler) OnInterceptEvent(node *Node, event interface{}) bool {
+func (h *interceptHandler) OnInterceptEvent(node *Node, event Event) bool {
 	if h.onIntercept != nil {
 		return h.onIntercept(node, event)
 	}
 	return false
 }
 
-func (h *interceptHandler) OnEvent(node *Node, event interface{}) bool {
+func (h *interceptHandler) OnEvent(node *Node, event Event) bool {
 	if h.onEvent != nil {
 		return h.onEvent(node, event)
 	}

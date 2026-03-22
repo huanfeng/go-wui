@@ -88,7 +88,7 @@ func (p *textViewPainter) Paint(node *core.Node, canvas core.Canvas) {
 		canvas.DrawRect(core.Rect{Width: b.Width, Height: b.Height}, bgPaint)
 	}
 
-	// Draw text
+	// Draw text with gravity support
 	fontSize := 14.0
 	if s.FontSize > 0 {
 		fontSize = s.FontSize
@@ -99,7 +99,21 @@ func (p *textViewPainter) Paint(node *core.Node, canvas core.Canvas) {
 		FontFamily: s.FontFamily,
 		FontWeight: s.FontWeight,
 	}
-	// Baseline position: roughly 70% of font size from top
-	y := fontSize * 0.7
-	canvas.DrawText(text, 0, y, paint)
+
+	// Measure actual text size for gravity positioning
+	textSize := canvas.MeasureText(text, paint)
+
+	// Horizontal position based on gravity
+	x := 0.0
+	switch s.Gravity {
+	case core.GravityCenter:
+		x = (b.Width - textSize.Width) / 2
+	case core.GravityEnd:
+		x = b.Width - textSize.Width
+	}
+
+	// Vertical centering
+	y := (b.Height - textSize.Height) / 2
+
+	canvas.DrawText(text, x, y, paint)
 }
