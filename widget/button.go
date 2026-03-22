@@ -144,10 +144,10 @@ func (p *buttonPainter) Paint(node *core.Node, canvas core.Canvas) {
 			FontFamily: s.FontFamily,
 			FontWeight: s.FontWeight,
 		}
-		// Center text roughly
-		textWidth := float64(len([]rune(text))) * fontSize * 0.6
-		x := (b.Width - textWidth) / 2
-		y := (b.Height + fontSize*0.7) / 2
+		// Center text using actual measurement
+		textSize := canvas.MeasureText(text, textPaint)
+		x := (b.Width - textSize.Width) / 2
+		y := (b.Height - textSize.Height) / 2
 		canvas.DrawText(text, x, y, textPaint)
 	}
 }
