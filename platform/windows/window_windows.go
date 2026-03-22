@@ -393,6 +393,17 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		y := int(int16((lParam >> 16) & 0xFFFF))
 		w.dispatchMotion(core.ActionUp, float64(x), float64(y), core.MouseButtonRight)
 		return 0
+
+	case WM_MOUSEWHEEL:
+		// wParam high word is wheel delta (positive = scroll up, negative = scroll down)
+		delta := int16(wParam >> 16)
+		// WHEEL_DELTA is 120; normalize to notch count
+		notches := float64(delta) / 120.0
+		// lParam contains screen coordinates; convert to client
+		x := int(int16(lParam & 0xFFFF))
+		y := int(int16((lParam >> 16) & 0xFFFF))
+		w.dispatchScroll(float64(x), float64(y), 0, notches)
+		return 0
 	}
 
 	ret, _, _ := procDefWindowProcW.Call(hwnd, uintptr(msg), wParam, lParam)
@@ -411,6 +422,15 @@ func (w *win32Window) dispatchMotion(action core.MotionAction, x, y float64, but
 	evt.RawY = y
 
 	// Use core.DispatchEvent for proper hit-testing and event bubbling
+	core.DispatchEvent(w.contentView, evt, core.Point{X: x, Y: y})
+}
+
+// dispatchScroll creates and dispatches a ScrollEvent through the node tree.
+func (w *win32Window) dispatchScroll(x, y, deltaX, deltaY float64) {
+	if w.contentView == nil {
+		return
+	}
+	evt := core.NewScrollEvent(x, y, deltaX, deltaY)
 	core.DispatchEvent(w.contentView, evt, core.Point{X: x, Y: y})
 }
 
@@ -656,6 +676,9 @@ func scaleNodeTreeDPI(node *core.Node, scale float64) {
 }
 
 // PaintNode recursively paints a node tree onto a canvas.
+// If a node has the "paintsChildren" data flag set, child painting is
+// skipped here because the node's Painter handles it internally (e.g.
+// ScrollView applies clipping and scroll-offset translation).
 func PaintNode(node *core.Node, canvas core.Canvas) {
 	if node.GetVisibility() != core.Visible {
 		return
@@ -666,8 +689,11 @@ func PaintNode(node *core.Node, canvas core.Canvas) {
 	if p := node.GetPainter(); p != nil {
 		p.Paint(node, canvas)
 	}
-	for _, child := range node.Children() {
-		PaintNode(child, canvas)
+	// Skip child painting if the painter already handled it
+	if node.GetData("paintsChildren") == nil {
+		for _, child := range node.Children() {
+			PaintNode(child, canvas)
+		}
 	}
 	canvas.Restore()
 }
