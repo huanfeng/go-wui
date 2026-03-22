@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="title">GoWUI Widget Showcase</string>
+    <string name="status_default">Interact with widgets below</string>
+    <string name="section_buttons">Buttons</string>
+    <string name="section_toggles">CheckBox &amp; Switch</string>
+    <string name="section_radio">RadioGroup</string>
+    <string name="section_progress">ProgressBar</string>
+    <string name="btn_primary">Primary</string>
+    <string name="btn_secondary">Secondary</string>
+    <string name="cb_agree">I agree to the terms</string>
+    <string name="sw_dark">Dark Mode</string>
+    <string name="radio_small">Small</string>
+    <string name="radio_medium">Medium</string>
+    <string name="radio_large">Large</string>
+    <string name="btn_add_progress">Add 10% Progress</string>
+    <string name="footer">GoWUI Phase 2 — All widgets demo</string>
+</resources>

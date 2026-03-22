@@ -36,6 +36,13 @@ func (rg *RadioGroup) AddButton(rb *RadioButton) {
 	rg.node.AddChild(rb.Node())
 }
 
+// RegisterButton registers an existing child node as a managed RadioButton
+// without re-adding it as a child (it's already a child from XML inflation).
+func (rg *RadioGroup) RegisterButton(rb *RadioButton) {
+	rb.group = rg
+	rg.buttons = append(rg.buttons, rb)
+}
+
 // GetSelectedIndex returns the index of the currently selected button, or -1 if none.
 func (rg *RadioGroup) GetSelectedIndex() int {
 	return rg.selectedId

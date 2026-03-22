@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    width="match_parent"
+    height="match_parent"
+    background="@color/background">
+
+    <LinearLayout
+        width="match_parent"
+        height="wrap_content"
+        orientation="vertical"
+        padding="24dp"
+        spacing="16dp">
+
+        <!-- Title -->
+        <TextView
+            width="match_parent"
+            height="wrap_content"
+            text="@string/title"
+            textSize="24dp"
+            textColor="@color/textPrimary"
+            gravity="center" />
+
+        <!-- Status bar -->
+        <TextView
+            id="status"
+            width="match_parent"
+            height="wrap_content"
+            text="@string/status_default"
+            textSize="14dp"
+            textColor="@color/accent"
+            gravity="center" />
+
+        <Divider width="match_parent" height="1dp" />
+
+        <!-- Section: Buttons -->
+        <TextView
+            width="match_parent"
+            height="wrap_content"
+            text="@string/section_buttons"
+            textSize="16dp"
+            textColor="@color/textSecondary" />
+
+        <LinearLayout
+            width="match_parent"
+            height="wrap_content"
+            orientation="horizontal"
+            spacing="12dp">
+
+            <Button
+                id="btn_primary"
+                width="0"
+                height="44dp"
+                layout_weight="1"
+                text="@string/btn_primary" />
+
+            <Button
+                id="btn_secondary"
+                width="0"
+                height="44dp"
+                layout_weight="1"
+                text="@string/btn_secondary" />
+        </LinearLayout>
+
+        <Divider width="match_parent" height="1dp" />
+
+        <!-- Section: CheckBox & Switch -->
+        <TextView
+            width="match_parent"
+            height="wrap_content"
+            text="@string/section_toggles"
+            textSize="16dp"
+            textColor="@color/textSecondary" />
+
+        <CheckBox
+            id="cb_agree"
+            width="match_parent"
+            height="wrap_content"
+            text="@string/cb_agree" />
+
+        <LinearLayout
+            width="match_parent"
+            height="wrap_content"
+            orientation="horizontal"
+            spacing="12dp">
+
+            <TextView
+                width="wrap_content"
+                height="wrap_content"
+                text="@string/sw_dark"
+                textSize="14dp"
+                textColor="@color/textPrimary" />
+
+            <Switch
+                id="sw_dark"
+                width="wrap_content"
+                height="wrap_content" />
+        </LinearLayout>
+
+        <Divider width="match_parent" height="1dp" />
+
+        <!-- Section: RadioGroup -->
+        <TextView
+            width="match_parent"
+            height="wrap_content"
+            text="@string/section_radio"
+            textSize="16dp"
+            textColor="@color/textSecondary" />
+
+        <RadioGroup
+            id="rg_size"
+            width="match_parent"
+            height="wrap_content">
+
+            <RadioButton text="@string/radio_small" />
+            <RadioButton text="@string/radio_medium" selected="true" />
+            <RadioButton text="@string/radio_large" />
+        </RadioGroup>
+
+        <Divider width="match_parent" height="1dp" />
+
+        <!-- Section: ProgressBar -->
+        <TextView
+            width="match_parent"
+            height="wrap_content"
+            text="@string/section_progress"
+            textSize="16dp"
+            textColor="@color/textSecondary" />
+
+        <ProgressBar
+            id="pb_demo"
+            width="match_parent"
+            height="wrap_content"
+            progress="0.3" />
+
+        <Button
+            id="btn_progress"
+            width="match_parent"
+            height="40dp"
+            text="@string/btn_add_progress" />
+
+        <Divider width="match_parent" height="1dp" />
+
+        <!-- Footer with padding for scroll -->
+        <TextView
+            width="match_parent"
+            height="wrap_content"
+            text="@string/footer"
+            textSize="12dp"
+            textColor="@color/textSecondary"
+            gravity="center" />
+
+    </LinearLayout>
+</ScrollView>
