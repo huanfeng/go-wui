@@ -14,6 +14,9 @@ func RegisterBuiltinViews(li *LayoutInflater) {
 	li.RegisterView("TextView", inflateTextView)
 	li.RegisterView("ImageView", inflateImageView)
 	li.RegisterView("Button", inflateButton)
+	li.RegisterView("Divider", inflateDivider)
+	li.RegisterView("CheckBox", inflateCheckBox)
+	li.RegisterView("Switch", inflateSwitch)
 }
 
 func inflateLinearLayout(attrs *AttributeSet) *core.Node {
@@ -111,6 +114,43 @@ func inflateButton(attrs *AttributeSet) *core.Node {
 	}
 
 	return btn.Node()
+}
+
+func inflateDivider(attrs *AttributeSet) *core.Node {
+	d := widget.NewDivider()
+	applyCommonAttrs(d.Node(), attrs)
+	return d.Node()
+}
+
+func inflateCheckBox(attrs *AttributeSet) *core.Node {
+	text := attrs.GetString("text")
+	cb := widget.NewCheckBox(text)
+	applyCommonAttrs(cb.Node(), attrs)
+
+	if attrs.GetBool("checked") {
+		cb.SetChecked(true)
+	}
+
+	// Apply text-specific attributes
+	if size := attrs.GetDimension("textSize"); size.Value > 0 {
+		cb.Node().GetStyle().FontSize = size.Value
+	}
+	if clr := attrs.GetColor("textColor"); clr.A > 0 {
+		cb.Node().GetStyle().TextColor = clr
+	}
+
+	return cb.Node()
+}
+
+func inflateSwitch(attrs *AttributeSet) *core.Node {
+	sw := widget.NewSwitch()
+	applyCommonAttrs(sw.Node(), attrs)
+
+	if attrs.GetBool("checked") {
+		sw.SetOn(true)
+	}
+
+	return sw.Node()
 }
 
 // containerPainter is a simple painter for layout containers that draws
