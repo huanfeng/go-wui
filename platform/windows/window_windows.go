@@ -416,9 +416,10 @@ func (w *win32Window) SetIcon(icon *core.ImageResource) {
 }
 
 func (w *win32Window) Show() {
-	// Render first frame before showing to avoid black flash
-	w.render()
 	procShowWindow.Call(w.hwnd, SW_SHOW)
+	// Force immediate render after showing (ShowWindow triggers WM_PAINT,
+	// but we also render explicitly to ensure content is visible immediately)
+	w.render()
 }
 
 func (w *win32Window) Hide() {

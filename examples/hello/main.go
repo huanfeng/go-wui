@@ -67,7 +67,7 @@ func main() {
 		}
 	}
 
+	window.Center() // Center before Show to avoid position flicker
 	window.Show()
-	window.Center()
 	application.Run()
 }
