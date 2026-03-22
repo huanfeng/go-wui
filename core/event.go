@@ -117,6 +117,26 @@ type KeyEvent struct {
 	Modifier KeyModifier
 }
 
+// ScrollEvent represents mouse wheel / trackpad scroll events.
+type ScrollEvent struct {
+	baseEvent
+	X, Y     float64 // pointer position relative to target node
+	DeltaX   float64 // horizontal scroll amount (positive = right)
+	DeltaY   float64 // vertical scroll amount (positive = down)
+	Modifier KeyModifier
+}
+
+// NewScrollEvent creates a ScrollEvent with the given position and scroll deltas.
+func NewScrollEvent(x, y, deltaX, deltaY float64) *ScrollEvent {
+	return &ScrollEvent{
+		baseEvent: baseEvent{eventType: EventScroll},
+		X:         x,
+		Y:         y,
+		DeltaX:    deltaX,
+		DeltaY:    deltaY,
+	}
+}
+
 // FocusEvent represents focus gain/loss on a node.
 type FocusEvent struct {
 	baseEvent
