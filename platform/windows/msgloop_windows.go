@@ -48,12 +48,6 @@ func runMessageLoop(quit chan struct{}) {
 		if ret == -1 {
 			break // Error
 		}
-		// IsDialogMessage handles Tab/Enter for child controls (EditText).
-		// If it processes the message, skip normal dispatch.
-		isDialog, _, _ := procIsDialogMessageW.Call(msg.HWnd, uintptr(unsafe.Pointer(&msg)))
-		if isDialog != 0 {
-			continue
-		}
 		translateMessage(&msg)
 		dispatchMessage(&msg)
 	}

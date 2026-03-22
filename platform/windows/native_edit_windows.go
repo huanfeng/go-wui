@@ -1,6 +1,7 @@
 package windows
 
 import (
+	"fmt"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -87,6 +88,8 @@ func newNativeEdit(parentHwnd uintptr) *win32NativeEdit {
 		0, // lpParam
 	)
 
+	fmt.Printf("[NativeEdit] Created: hwnd=0x%X, parent=0x%X\n", hwnd, parentHwnd)
+
 	return &win32NativeEdit{
 		hwnd:       hwnd,
 		parentHwnd: parentHwnd,
@@ -101,12 +104,15 @@ func (e *win32NativeEdit) AttachToNode(node *core.Node) {
 	b := node.Bounds()
 
 	// Walk up the tree to compute the absolute position within the window.
-	absX, absY := 0.0, 0.0
-	for n := node; n != nil; n = n.Parent() {
+	absX, absY := b.X, b.Y
+	for n := node.Parent(); n != nil; n = n.Parent() {
 		nb := n.Bounds()
 		absX += nb.X
 		absY += nb.Y
 	}
+
+	fmt.Printf("[NativeEdit] AttachToNode: hwnd=0x%X, pos=(%d,%d), size=(%d,%d)\n",
+		e.hwnd, int(absX), int(absY), int(b.Width), int(b.Height))
 
 	procMoveWindow.Call(
 		e.hwnd,
