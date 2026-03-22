@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Widget.Button">
+        <item name="background">#1976D2</item>
+        <item name="textColor">#FFFFFF</item>
+        <item name="textSize">16dp</item>
+        <item name="cornerRadius">4dp</item>
+    </style>
+</resources>

@@ -27,9 +27,22 @@ func inflateLinearLayout(attrs *AttributeSet) *core.Node {
 
 	spacing := attrs.GetDimension("spacing")
 
+	gravity := core.GravityStart
+	switch attrs.GetString("gravity") {
+	case "center":
+		gravity = core.GravityCenter
+	case "end", "right", "bottom":
+		gravity = core.GravityEnd
+	case "center_vertical":
+		gravity = core.GravityCenterVertical
+	case "center_horizontal":
+		gravity = core.GravityCenterHorizontal
+	}
+
 	ll := &layout.LinearLayout{
 		Orientation: orientation,
 		Spacing:     spacing.Value,
+		Gravity:     gravity,
 	}
 	n.SetLayout(ll)
 	n.SetPainter(&containerPainter{})

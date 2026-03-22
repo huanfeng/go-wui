@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    width="match_parent"
+    height="match_parent"
+    orientation="vertical"
+    padding="24dp"
+    background="@color/background">
+
+    <TextView
+        id="title"
+        width="match_parent"
+        height="wrap_content"
+        text="@string/app_title"
+        textSize="28dp"
+        textColor="@color/textPrimary"
+        gravity="center" />
+
+    <TextView
+        width="match_parent"
+        height="wrap_content"
+        text="@string/description"
+        textSize="16dp"
+        textColor="@color/textSecondary"
+        gravity="center" />
+
+    <LinearLayout
+        width="match_parent"
+        height="wrap_content"
+        orientation="horizontal"
+        spacing="12dp"
+        gravity="center">
+
+        <Button
+            id="btn_cancel"
+            width="0"
+            height="48dp"
+            layout_weight="1"
+            text="@string/cancel" />
+
+        <Button
+            id="btn_ok"
+            width="0"
+            height="48dp"
+            layout_weight="1"
+            text="@string/confirm" />
+    </LinearLayout>
+</LinearLayout>

@@ -266,9 +266,18 @@ func applyCommonAttrs(node *core.Node, attrs *AttributeSet) {
 		style.Height = core.ParseDimension(h)
 	}
 
-	// Weight
+	// Weight — also mark the appropriate dimension as DimensionWeight so that
+	// LinearLayout distributes remaining space to this child.
 	if wt := attrs.GetFloat("layout_weight"); wt > 0 {
 		style.Weight = wt
+		// In a horizontal LinearLayout the width is distributed; in vertical the height.
+		// We mark whichever axis is set to 0 (or explicitly 0dp) as weight-based.
+		if style.Width.Value == 0 && style.Width.Unit != core.DimensionMatchParent && style.Width.Unit != core.DimensionWrapContent {
+			style.Width = core.Dimension{Value: wt, Unit: core.DimensionWeight}
+		}
+		if style.Height.Value == 0 && style.Height.Unit != core.DimensionMatchParent && style.Height.Unit != core.DimensionWrapContent {
+			style.Height = core.Dimension{Value: wt, Unit: core.DimensionWeight}
+		}
 	}
 
 	// Padding (uniform)
