@@ -3,7 +3,6 @@ package windows
 import (
 	"gowui/core"
 	"gowui/platform"
-	"gowui/render/freetype"
 )
 
 // WindowsPlatform implements platform.Platform for Windows.
@@ -37,7 +36,7 @@ func (p *WindowsPlatform) Quit() {
 }
 
 func (p *WindowsPlatform) CreateTextRenderer() core.TextRenderer {
-	return freetype.NewFreeTypeTextRenderer()
+	return CreateTextRendererWithFallback()
 }
 
 // Stubs for Phase 1

@@ -10,7 +10,6 @@ import (
 	"gowui/core"
 	"gowui/layout"
 	"gowui/platform"
-	"gowui/render/freetype"
 	"gowui/render/gg"
 )
 
@@ -189,7 +188,8 @@ type win32Window struct {
 	plat     *WindowsPlatform
 	opts     platform.WindowOptions
 
-	contentView *core.Node
+	contentView  *core.Node
+	textRenderer core.TextRenderer
 
 	onClose        func() bool
 	onResize       func(w, h int)
@@ -534,9 +534,11 @@ func (w *win32Window) render() {
 		return
 	}
 
-	// Create canvas with text renderer
-	textRenderer := freetype.NewFreeTypeTextRenderer()
-	canvas := gg.NewGGCanvas(width, height, textRenderer)
+	// Create canvas with cached text renderer
+	if w.textRenderer == nil {
+		w.textRenderer = w.plat.CreateTextRenderer()
+	}
+	canvas := gg.NewGGCanvas(width, height, w.textRenderer)
 
 	// Measure
 	root := contentView
