@@ -22,6 +22,7 @@ func RegisterBuiltinViews(li *LayoutInflater) {
 	li.RegisterView("RadioButton", inflateRadioButton)
 	li.RegisterView("RadioGroup", inflateRadioGroup)
 	li.RegisterView("ProgressBar", inflateProgressBar)
+	li.RegisterView("EditText", inflateEditText)
 }
 
 func inflateLinearLayout(attrs *AttributeSet) *core.Node {
@@ -208,6 +209,22 @@ func inflateProgressBar(attrs *AttributeSet) *core.Node {
 	}
 
 	return pb.Node()
+}
+
+func inflateEditText(attrs *AttributeSet) *core.Node {
+	hint := attrs.GetString("hint")
+	et := widget.NewEditText(hint)
+	applyCommonAttrs(et.Node(), attrs)
+
+	if text := attrs.GetString("text"); text != "" {
+		et.SetText(text)
+	}
+	// Apply text-specific attributes
+	if size := attrs.GetDimension("textSize"); size.Value > 0 {
+		et.Node().GetStyle().FontSize = size.Value
+	}
+
+	return et.Node()
 }
 
 // containerPainter is a simple painter for layout containers that draws
