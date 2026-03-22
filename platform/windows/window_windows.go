@@ -320,6 +320,8 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case WM_DESTROY:
 		windowMap.Delete(hwnd)
+		// Post WM_QUIT to exit the message loop
+		procPostQuitMessage.Call(0)
 		return 0
 
 	case WM_SIZE:
@@ -380,7 +382,8 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	return ret
 }
 
-// dispatchMotion creates and dispatches a MotionEvent to the content view.
+// dispatchMotion creates and dispatches a MotionEvent through the node tree
+// using the 3-phase dispatch (hit-test → intercept → handle+bubble).
 func (w *win32Window) dispatchMotion(action core.MotionAction, x, y float64, button core.MouseButton) {
 	if w.contentView == nil {
 		return
@@ -390,10 +393,8 @@ func (w *win32Window) dispatchMotion(action core.MotionAction, x, y float64, but
 	evt.RawX = x
 	evt.RawY = y
 
-	handler := w.contentView.GetHandler()
-	if handler != nil {
-		handler.OnDispatchEvent(w.contentView, evt)
-	}
+	// Use core.DispatchEvent for proper hit-testing and event bubbling
+	core.DispatchEvent(w.contentView, evt, core.Point{X: x, Y: y})
 }
 
 // ---------- platform.Window implementation ----------
