@@ -46,12 +46,13 @@ func main() {
 	window.Show()
 
 	// Attach native edits after first render (DPI scaling applied)
+	dpiScale := window.GetDPI() / 96.0
 	attachNativeEdit := func(id, placeholder string) {
 		if v := root.FindViewById(id); v != nil {
 			nativeEdit := application.Platform().CreateNativeEditText(window)
 			if nativeEdit != nil {
 				nativeEdit.AttachToNode(v.Node())
-				nativeEdit.SetFont("Segoe UI", 14, 400)
+				nativeEdit.SetFont("Segoe UI", 14*dpiScale, 400) // scale dp to physical px
 				nativeEdit.SetPlaceholder(placeholder)
 			}
 		}
