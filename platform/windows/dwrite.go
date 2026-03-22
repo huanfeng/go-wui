@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"gowui/core"
+	"gowui/render/freetype"
 )
 
 // GUID for COM
@@ -108,6 +109,9 @@ type DWriteTextRenderer struct {
 	fontFamily string
 	fontWeight int
 	fontSize   float64
+
+	// FreeType fallback for pixel rendering (until D2D is integrated)
+	drawFallback *freetype.FreeTypeTextRenderer
 
 	mu sync.Mutex
 }
@@ -307,10 +311,12 @@ func (tr *DWriteTextRenderer) MeasureText(text string) core.Size {
 }
 
 func (tr *DWriteTextRenderer) DrawText(canvas core.Canvas, text string, x, y float64, paint *core.Paint) {
-	// Phase 1: measurement only. DrawText uses FreeType fallback for actual rendering.
-	// Phase 2 will add D2D rendering.
-	// For now, this is a no-op — the text won't render via DirectWrite yet.
-	// The important part is that MEASUREMENT is accurate, so layout is correct.
+	// Use FreeType for pixel rendering until D2D integration in Phase 2.
+	// Measurement is handled by DirectWrite (MeasureText/CreateTextLayout).
+	if tr.drawFallback == nil {
+		tr.drawFallback = freetype.NewFreeTypeTextRenderer()
+	}
+	tr.drawFallback.DrawText(canvas, text, x, y, paint)
 }
 
 func (tr *DWriteTextRenderer) CreateTextLayout(text string, paint *core.Paint, maxWidth float64) *core.TextLayoutResult {
