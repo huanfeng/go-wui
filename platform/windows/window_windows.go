@@ -98,6 +98,7 @@ var (
 	procGetWindowRect     = user32.NewProc("GetWindowRect")
 	procGetWindowLongW    = user32.NewProc("GetWindowLongW")
 	procScreenToClient    = user32.NewProc("ScreenToClient")
+	procIsDialogMessageW  = user32.NewProc("IsDialogMessageW")
 
 	procCreateCompatibleDC = gdi32.NewProc("CreateCompatibleDC")
 	procCreateDIBSection   = gdi32.NewProc("CreateDIBSection")
@@ -245,7 +246,9 @@ func newWin32Window(plat *WindowsPlatform, opts platform.WindowOptions) (*win32W
 	hInstance, _, _ := procGetModuleHandleW.Call(0)
 
 	// Determine window styles
-	style := uintptr(WS_OVERLAPPEDWINDOW)
+	// WS_CLIPCHILDREN excludes child window areas from parent painting,
+	// so native EDIT controls aren't covered by our BitBlt.
+	style := uintptr(WS_OVERLAPPEDWINDOW | 0x02000000) // WS_CLIPCHILDREN = 0x02000000
 	exStyle := uintptr(0)
 
 	if opts.Frameless {

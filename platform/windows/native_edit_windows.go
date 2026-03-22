@@ -40,7 +40,6 @@ var (
 	nativeEditProcsOnce sync.Once
 	procSendMessageW    *syscall.LazyProc
 	procSetFocus        *syscall.LazyProc
-	procIsDialogMessageW *syscall.LazyProc
 )
 
 func initNativeEditProcs() {
@@ -48,7 +47,6 @@ func initNativeEditProcs() {
 		u32 := syscall.NewLazyDLL("user32.dll")
 		procSendMessageW = u32.NewProc("SendMessageW")
 		procSetFocus = u32.NewProc("SetFocus")
-		procIsDialogMessageW = u32.NewProc("IsDialogMessageW")
 	})
 }
 
