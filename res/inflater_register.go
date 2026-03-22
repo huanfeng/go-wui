@@ -17,6 +17,9 @@ func RegisterBuiltinViews(li *LayoutInflater) {
 	li.RegisterView("Divider", inflateDivider)
 	li.RegisterView("CheckBox", inflateCheckBox)
 	li.RegisterView("Switch", inflateSwitch)
+	li.RegisterView("RadioButton", inflateRadioButton)
+	li.RegisterView("RadioGroup", inflateRadioGroup)
+	li.RegisterView("ProgressBar", inflateProgressBar)
 }
 
 func inflateLinearLayout(attrs *AttributeSet) *core.Node {
@@ -151,6 +154,46 @@ func inflateSwitch(attrs *AttributeSet) *core.Node {
 	}
 
 	return sw.Node()
+}
+
+func inflateRadioButton(attrs *AttributeSet) *core.Node {
+	text := attrs.GetString("text")
+	rb := widget.NewRadioButton(text)
+	applyCommonAttrs(rb.Node(), attrs)
+
+	if attrs.GetBool("selected") {
+		rb.SetSelected(true)
+	}
+
+	// Apply text-specific attributes
+	if size := attrs.GetDimension("textSize"); size.Value > 0 {
+		rb.Node().GetStyle().FontSize = size.Value
+	}
+	if clr := attrs.GetColor("textColor"); clr.A > 0 {
+		rb.Node().GetStyle().TextColor = clr
+	}
+
+	return rb.Node()
+}
+
+func inflateRadioGroup(attrs *AttributeSet) *core.Node {
+	rg := widget.NewRadioGroup()
+	applyCommonAttrs(rg.Node(), attrs)
+	return rg.Node()
+}
+
+func inflateProgressBar(attrs *AttributeSet) *core.Node {
+	pb := widget.NewProgressBar()
+	applyCommonAttrs(pb.Node(), attrs)
+
+	if progress := attrs.GetFloat("progress"); progress > 0 {
+		pb.SetProgress(progress)
+	}
+	if attrs.GetBool("indeterminate") {
+		pb.SetIndeterminate(true)
+	}
+
+	return pb.Node()
 }
 
 // containerPainter is a simple painter for layout containers that draws
