@@ -62,8 +62,9 @@ func (fl *FrameLayout) Measure(node *core.Node, widthSpec, heightSpec core.Measu
 // Arrange positions each visible child based on its Style.Gravity.
 func (fl *FrameLayout) Arrange(node *core.Node, bounds core.Rect) {
 	padding := node.Padding()
-	contentX := bounds.X + padding.Left
-	contentY := bounds.Y + padding.Top
+	// Child bounds are RELATIVE to parent — start from padding, not bounds.X/Y
+	contentX := padding.Left
+	contentY := padding.Top
 	contentW := bounds.Width - padding.Left - padding.Right
 	contentH := bounds.Height - padding.Top - padding.Bottom
 

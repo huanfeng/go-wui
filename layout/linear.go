@@ -141,9 +141,10 @@ func (ll *LinearLayout) measureVertical(node *core.Node, widthSpec, heightSpec c
 
 func (ll *LinearLayout) arrangeVertical(node *core.Node, bounds core.Rect) {
 	padding := node.Padding()
-	contentX := bounds.X + padding.Left
+	// Child bounds are RELATIVE to parent — start from padding, not bounds.X/Y
+	contentX := padding.Left
 	contentW := bounds.Width - padding.Left - padding.Right
-	curY := bounds.Y + padding.Top
+	curY := padding.Top
 
 	for _, child := range node.Children() {
 		if child.GetVisibility() == core.Gone {
@@ -280,9 +281,10 @@ func (ll *LinearLayout) measureHorizontal(node *core.Node, widthSpec, heightSpec
 
 func (ll *LinearLayout) arrangeHorizontal(node *core.Node, bounds core.Rect) {
 	padding := node.Padding()
-	contentY := bounds.Y + padding.Top
+	// Child bounds are RELATIVE to parent — start from padding, not bounds.X/Y
+	contentY := padding.Top
 	contentH := bounds.Height - padding.Top - padding.Bottom
-	curX := bounds.X + padding.Left
+	curX := padding.Left
 
 	for _, child := range node.Children() {
 		if child.GetVisibility() == core.Gone {
