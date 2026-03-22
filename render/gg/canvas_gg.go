@@ -17,7 +17,14 @@ type GGCanvas struct {
 	textRenderer core.TextRenderer
 	width        int
 	height       int
+
+	// Manual translate tracking for operations that bypass gg's transform
+	// (DrawText and DrawImage write directly to the raw *image.RGBA).
+	txStack []point2
+	tx, ty  float64 // accumulated translate offset
 }
+
+type point2 struct{ x, y float64 }
 
 // NewGGCanvas creates a new GGCanvas with the given dimensions.
 // textRenderer may be nil; text operations become no-ops in that case.
@@ -103,19 +110,24 @@ func (c *GGCanvas) DrawImage(img *core.ImageResource, dst core.Rect) {
 	}
 
 	// Draw scaled image onto the gg context's underlying image.
+	// Apply accumulated translate offset since we write directly to raw pixels.
+	dx := dst.X + c.tx
+	dy := dst.Y + c.ty
 	target := c.targetRGBA()
 	draw.Draw(target,
-		image.Rect(int(dst.X), int(dst.Y), int(dst.X+dst.Width), int(dst.Y+dst.Height)),
+		image.Rect(int(dx), int(dy), int(dx+dst.Width), int(dy+dst.Height)),
 		tmp, image.Point{}, draw.Over)
 }
 
 // DrawText delegates to the injected TextRenderer. No-op if nil.
+// Applies accumulated translate offset since TextRenderer writes directly
+// to the raw *image.RGBA, bypassing gg's internal transform.
 func (c *GGCanvas) DrawText(text string, x, y float64, paint *core.Paint) {
 	if c.textRenderer == nil || paint == nil {
 		return
 	}
 	c.textRenderer.SetFont(paint.FontFamily, paint.FontWeight, paint.FontSize)
-	c.textRenderer.DrawText(c, text, x, y, paint)
+	c.textRenderer.DrawText(c, text, x+c.tx, y+c.ty, paint)
 }
 
 // MeasureText delegates to the injected TextRenderer. Returns zero Size if nil.
@@ -132,16 +144,24 @@ func (c *GGCanvas) MeasureText(text string, paint *core.Paint) core.Size {
 // Save pushes the current drawing state (transform, clip) onto the stack.
 func (c *GGCanvas) Save() {
 	c.dc.Push()
+	c.txStack = append(c.txStack, point2{c.tx, c.ty})
 }
 
 // Restore pops the most recent drawing state from the stack.
 func (c *GGCanvas) Restore() {
 	c.dc.Pop()
+	if len(c.txStack) > 0 {
+		top := c.txStack[len(c.txStack)-1]
+		c.txStack = c.txStack[:len(c.txStack)-1]
+		c.tx, c.ty = top.x, top.y
+	}
 }
 
 // Translate accumulates a translation offset.
 func (c *GGCanvas) Translate(dx, dy float64) {
 	c.dc.Translate(dx, dy)
+	c.tx += dx
+	c.ty += dy
 }
 
 // ClipRect intersects the current clip with the given rectangle.
