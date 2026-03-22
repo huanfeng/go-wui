@@ -44,6 +44,21 @@ func main() {
 
 	window.Center()
 	window.Show()
+
+	// Attach native edits after first render (DPI scaling applied)
+	attachNativeEdit := func(id, placeholder string) {
+		if v := root.FindViewById(id); v != nil {
+			nativeEdit := application.Platform().CreateNativeEditText(window)
+			if nativeEdit != nil {
+				nativeEdit.AttachToNode(v.Node())
+				nativeEdit.SetFont("Segoe UI", 14, 400)
+				nativeEdit.SetPlaceholder(placeholder)
+			}
+		}
+	}
+	attachNativeEdit("et_name", "Enter your name")
+	attachNativeEdit("et_email", "Enter your email")
+
 	application.Run()
 }
 
@@ -141,6 +156,15 @@ func wireWidgets(root *core.Node, window platform.Window) {
 					})
 				}
 			}
+		}
+	}
+
+	// Submit button — read values from native edits
+	if v := root.FindViewById("btn_submit"); v != nil {
+		if btn, ok := v.(*widget.Button); ok {
+			btn.SetOnClickListener(func(_ core.View) {
+				updateStatus("Submit clicked!")
+			})
 		}
 	}
 }

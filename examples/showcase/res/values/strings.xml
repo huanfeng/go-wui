@@ -14,5 +14,9 @@
     <string name="radio_medium">Medium</string>
     <string name="radio_large">Large</string>
     <string name="btn_add_progress">Add 10% Progress</string>
+    <string name="section_edittext">EditText</string>
+    <string name="et_hint_name">Enter your name</string>
+    <string name="et_hint_email">Enter your email</string>
+    <string name="btn_submit">Submit</string>
     <string name="footer">GoWUI Phase 2 — All widgets demo</string>
 </resources>
