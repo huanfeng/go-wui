@@ -3,9 +3,11 @@
 package windows
 
 import (
+	"image/color"
 	"testing"
 
 	"gowui/core"
+	"gowui/render/gg"
 )
 
 func TestDWriteInit(t *testing.T) {
@@ -105,4 +107,135 @@ func TestDWriteFontSizeChange(t *testing.T) {
 	if large.Width <= small.Width || large.Height <= small.Height {
 		t.Errorf("larger font should produce larger text: small=%+v large=%+v", small, large)
 	}
+}
+
+func TestDWriteGdiInteropInit(t *testing.T) {
+	tr, err := NewDWriteTextRenderer()
+	if err != nil {
+		t.Skip("DirectWrite not available:", err)
+	}
+	defer tr.Close()
+
+	// Initialize the backend directly.
+	b := &gdiInteropBackend{}
+	err = b.Init(tr.factory)
+	if err != nil {
+		t.Fatalf("GDI Interop backend Init failed: %v", err)
+	}
+	defer b.Close()
+
+	if b.gdiInterop == 0 {
+		t.Error("gdiInterop should be non-zero")
+	}
+	if b.bitmapTarget == 0 {
+		t.Error("bitmapTarget should be non-zero")
+	}
+	if b.renderParams == 0 {
+		t.Error("renderParams should be non-zero")
+	}
+	if b.renderer == nil {
+		t.Error("renderer should be non-nil")
+	}
+}
+
+func TestDWriteDrawTextProducesPixels(t *testing.T) {
+	tr, err := NewDWriteTextRenderer()
+	if err != nil {
+		t.Skip("DirectWrite not available:", err)
+	}
+	defer tr.Close()
+
+	// Create a canvas big enough for the text.
+	canvas := gg.NewGGCanvas(200, 50, tr)
+
+	paint := &core.Paint{
+		Color:    color.RGBA{R: 255, G: 255, B: 255, A: 255}, // white text
+		FontSize: 14,
+	}
+
+	tr.SetFont("Segoe UI", 400, 14)
+	tr.DrawText(canvas, "Hello", 10, 10, paint)
+
+	// Check that at least some pixels were written.
+	img := canvas.Target()
+	nonZero := 0
+	bounds := img.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, a := img.At(x, y).RGBA()
+			if r > 0 || g > 0 || b > 0 || a > 0 {
+				nonZero++
+			}
+		}
+	}
+
+	t.Logf("DrawText produced %d non-zero pixels out of %d total",
+		nonZero, bounds.Dx()*bounds.Dy())
+
+	if nonZero == 0 {
+		t.Error("DrawText should produce non-zero pixels for visible text")
+	}
+}
+
+func TestDWriteDrawTextBlackOnWhite(t *testing.T) {
+	tr, err := NewDWriteTextRenderer()
+	if err != nil {
+		t.Skip("DirectWrite not available:", err)
+	}
+	defer tr.Close()
+
+	// Create a canvas and fill with white background.
+	canvas := gg.NewGGCanvas(200, 50, tr)
+	img := canvas.Target()
+	for i := 0; i < len(img.Pix); i += 4 {
+		img.Pix[i+0] = 255 // R
+		img.Pix[i+1] = 255 // G
+		img.Pix[i+2] = 255 // B
+		img.Pix[i+3] = 255 // A
+	}
+
+	paint := &core.Paint{
+		Color:    color.RGBA{R: 0, G: 0, B: 0, A: 255}, // black text
+		FontSize: 14,
+	}
+
+	tr.SetFont("Segoe UI", 400, 14)
+	tr.DrawText(canvas, "Test", 10, 10, paint)
+
+	// Check that some pixels are darker than pure white (text was rendered).
+	darkPixels := 0
+	bounds := img.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			// Pixel is "dark" if any channel is below full white.
+			if r < 0xFFFF || g < 0xFFFF || b < 0xFFFF {
+				darkPixels++
+			}
+		}
+	}
+
+	t.Logf("DrawText produced %d dark pixels on white background", darkPixels)
+
+	if darkPixels == 0 {
+		t.Error("DrawText with black color on white background should produce dark pixels")
+	}
+}
+
+func TestDWriteDrawTextEmptyNoPanic(t *testing.T) {
+	tr, err := NewDWriteTextRenderer()
+	if err != nil {
+		t.Skip("DirectWrite not available:", err)
+	}
+	defer tr.Close()
+
+	canvas := gg.NewGGCanvas(100, 30, tr)
+	paint := &core.Paint{
+		Color:    color.RGBA{R: 255, A: 255},
+		FontSize: 14,
+	}
+
+	// These should be no-ops, not panics.
+	tr.DrawText(canvas, "", 0, 0, paint)
+	tr.DrawText(nil, "Hello", 0, 0, paint)
 }

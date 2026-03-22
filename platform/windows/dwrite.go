@@ -3,13 +3,14 @@
 package windows
 
 import (
+	"image"
 	"math"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
 	"gowui/core"
-	"gowui/render/freetype"
 )
 
 // GUID for COM
@@ -37,12 +38,25 @@ var iidIDWriteFactory = comGUID{
 	[8]byte{0xa2, 0xe8, 0x1a, 0xdc, 0x7d, 0x93, 0xdb, 0x48},
 }
 
+// GDI constants for bitmap readback.
+const (
+	_OBJ_BITMAP    = 7
+	_PATCOPY       = 0x00F00021
+	_DWRITE_MEASURING_MODE_NATURAL = 0
+	_S_OK          = 0
+)
+
 // DLL and proc
 var (
 	dwriteDll               *syscall.LazyDLL
 	procDWriteCreateFactory *syscall.LazyProc
 	dwriteInitOnce          sync.Once
 	dwriteInitErr           error
+
+	// Additional GDI procs for bitmap readback.
+	procGetDIBits        *syscall.LazyProc
+	procGetCurrentObject *syscall.LazyProc
+	procPatBlt           *syscall.LazyProc
 )
 
 func initDWrite() error {
@@ -50,6 +64,14 @@ func initDWrite() error {
 		dwriteDll = syscall.NewLazyDLL("dwrite.dll")
 		procDWriteCreateFactory = dwriteDll.NewProc("DWriteCreateFactory")
 		dwriteInitErr = procDWriteCreateFactory.Find()
+		if dwriteInitErr != nil {
+			return
+		}
+		// Initialize GDI procs needed for bitmap readback.
+		gdi := syscall.NewLazyDLL("gdi32.dll")
+		procGetDIBits = gdi.NewProc("GetDIBits")
+		procGetCurrentObject = gdi.NewProc("GetCurrentObject")
+		procPatBlt = gdi.NewProc("PatBlt")
 	})
 	return dwriteInitErr
 }
@@ -101,6 +123,421 @@ type dwriteLineMetrics struct {
 	IsTrimmed                int32 // BOOL
 }
 
+// ---------- textDrawBackend abstraction ----------
+
+// textDrawBackend abstracts how text pixels are produced.
+// Current: GDI Interop. Future: D2D/D3D.
+type textDrawBackend interface {
+	Init(factory uintptr) error
+	BeginDraw(width, height int) error
+	DrawGlyphRun(baselineOriginX, baselineOriginY float32, measuringMode uint32,
+		glyphRun uintptr, glyphRunDesc uintptr, textColor uint32) error
+	EndDraw() (pixels []byte, stride int, err error) // returns BGRA pixel data
+	Close()
+}
+
+// ---------- GDI Interop backend ----------
+
+// gdiInteropBackend implements textDrawBackend using IDWriteGdiInterop +
+// IDWriteBitmapRenderTarget — no D2D/D3D dependency.
+type gdiInteropBackend struct {
+	gdiInterop   uintptr // IDWriteGdiInterop*
+	bitmapTarget uintptr // IDWriteBitmapRenderTarget*
+	renderParams uintptr // IDWriteRenderingParams*
+	width, height int
+
+	// Custom text renderer COM object for IDWriteTextLayout::Draw callback.
+	renderer *goTextRenderer
+}
+
+// goTextRendererVtable is the COM vtable for our IDWriteTextRenderer implementation.
+// Layout: IUnknown (3) + IDWritePixelSnapping (3) + IDWriteTextRenderer (4) = 10 methods.
+type goTextRendererVtable struct {
+	QueryInterface          uintptr
+	AddRef                  uintptr
+	Release                 uintptr
+	IsPixelSnappingDisabled uintptr
+	GetCurrentTransform     uintptr
+	GetPixelsPerDip         uintptr
+	DrawGlyphRun            uintptr
+	DrawUnderline           uintptr
+	DrawStrikethrough       uintptr
+	DrawInlineObject        uintptr
+}
+
+// goTextRenderer is our Go-implemented IDWriteTextRenderer COM object.
+// The vtable pointer MUST be the first field (COM convention: object pointer IS
+// pointer-to-vtable-pointer).
+type goTextRenderer struct {
+	vtable       *goTextRendererVtable // must be first field
+	refCount     int32
+	bitmapTarget uintptr // IDWriteBitmapRenderTarget* — delegate DrawGlyphRun here
+	renderParams uintptr // IDWriteRenderingParams*
+	textColor    uint32  // COLORREF (0x00BBGGRR)
+}
+
+// DWRITE_MATRIX is used by GetCurrentTransform (identity matrix).
+type dwriteMatrix struct {
+	M11 float32
+	M12 float32
+	M21 float32
+	M22 float32
+	Dx  float32
+	Dy  float32
+}
+
+// Global vtable instance — initialized once, shared by all goTextRenderer instances.
+var (
+	globalTextRendererVtable     *goTextRendererVtable
+	globalTextRendererVtableOnce sync.Once
+)
+
+func initGoTextRendererVtable() *goTextRendererVtable {
+	globalTextRendererVtableOnce.Do(func() {
+		globalTextRendererVtable = &goTextRendererVtable{
+			QueryInterface:          syscall.NewCallback(goTR_QueryInterface),
+			AddRef:                  syscall.NewCallback(goTR_AddRef),
+			Release:                 syscall.NewCallback(goTR_Release),
+			IsPixelSnappingDisabled: syscall.NewCallback(goTR_IsPixelSnappingDisabled),
+			GetCurrentTransform:     syscall.NewCallback(goTR_GetCurrentTransform),
+			GetPixelsPerDip:         syscall.NewCallback(goTR_GetPixelsPerDip),
+			DrawGlyphRun:            syscall.NewCallback(goTR_DrawGlyphRun),
+			DrawUnderline:           syscall.NewCallback(goTR_DrawUnderline),
+			DrawStrikethrough:       syscall.NewCallback(goTR_DrawStrikethrough),
+			DrawInlineObject:        syscall.NewCallback(goTR_DrawInlineObject),
+		}
+	})
+	return globalTextRendererVtable
+}
+
+// --- COM callback implementations ---
+
+// IID constants for QueryInterface.
+var (
+	_IID_IUnknown = comGUID{
+		0x00000000, 0x0000, 0x0000,
+		[8]byte{0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46},
+	}
+	_IID_IDWriteTextRenderer = comGUID{
+		0xef8a8135, 0x5cc6, 0x45fe,
+		[8]byte{0x88, 0x25, 0xc5, 0xa0, 0x72, 0x4e, 0xb8, 0x19},
+	}
+	_IID_IDWritePixelSnapping = comGUID{
+		0xeaf3a2da, 0xecf4, 0x4d24,
+		[8]byte{0xb6, 0x44, 0xb3, 0x4f, 0x68, 0x42, 0x02, 0x4b},
+	}
+)
+
+func guidEqual(a, b *comGUID) bool {
+	return a.Data1 == b.Data1 && a.Data2 == b.Data2 && a.Data3 == b.Data3 && a.Data4 == b.Data4
+}
+
+// goTR_QueryInterface — IUnknown::QueryInterface.
+// We support IUnknown, IDWritePixelSnapping, and IDWriteTextRenderer.
+func goTR_QueryInterface(this uintptr, riid uintptr, ppvObject uintptr) uintptr {
+	if ppvObject == 0 {
+		return 0x80004003 // E_POINTER
+	}
+
+	iid := (*comGUID)(unsafe.Pointer(riid))
+	if guidEqual(iid, &_IID_IUnknown) ||
+		guidEqual(iid, &_IID_IDWriteTextRenderer) ||
+		guidEqual(iid, &_IID_IDWritePixelSnapping) {
+		*(*uintptr)(unsafe.Pointer(ppvObject)) = this
+		goTR_AddRef(this)
+		return _S_OK
+	}
+
+	*(*uintptr)(unsafe.Pointer(ppvObject)) = 0
+	return 0x80004002 // E_NOINTERFACE
+}
+
+// goTR_AddRef — IUnknown::AddRef.
+func goTR_AddRef(this uintptr) uintptr {
+	tr := (*goTextRenderer)(unsafe.Pointer(this))
+	return uintptr(atomic.AddInt32(&tr.refCount, 1))
+}
+
+// goTR_Release — IUnknown::Release.
+func goTR_Release(this uintptr) uintptr {
+	tr := (*goTextRenderer)(unsafe.Pointer(this))
+	n := atomic.AddInt32(&tr.refCount, -1)
+	// We manage the lifetime externally, so don't free here.
+	return uintptr(n)
+}
+
+// goTR_IsPixelSnappingDisabled — IDWritePixelSnapping method.
+func goTR_IsPixelSnappingDisabled(this uintptr, clientDrawingContext uintptr, isDisabled uintptr) uintptr {
+	if isDisabled != 0 {
+		*(*int32)(unsafe.Pointer(isDisabled)) = 0 // FALSE — pixel snapping enabled
+	}
+	return _S_OK
+}
+
+// goTR_GetCurrentTransform — IDWritePixelSnapping method.
+func goTR_GetCurrentTransform(this uintptr, clientDrawingContext uintptr, transform uintptr) uintptr {
+	if transform != 0 {
+		m := (*dwriteMatrix)(unsafe.Pointer(transform))
+		*m = dwriteMatrix{M11: 1.0, M22: 1.0} // identity
+	}
+	return _S_OK
+}
+
+// goTR_GetPixelsPerDip — IDWritePixelSnapping method.
+func goTR_GetPixelsPerDip(this uintptr, clientDrawingContext uintptr, pixelsPerDip uintptr) uintptr {
+	if pixelsPerDip != 0 {
+		*(*float32)(unsafe.Pointer(pixelsPerDip)) = 1.0
+	}
+	return _S_OK
+}
+
+// goTR_DrawGlyphRun — IDWriteTextRenderer::DrawGlyphRun. This is the core callback.
+// Signature: HRESULT (this, clientDrawingContext, baselineOriginX, baselineOriginY,
+//
+//	measuringMode, glyphRun, glyphRunDescription, clientDrawingEffect)
+//
+// IMPORTANT: syscall.NewCallback on Windows does NOT support float parameters.
+// All parameters must be uintptr. Float values arrive as their bit representation
+// in a uintptr-sized word.
+func goTR_DrawGlyphRun(
+	this uintptr,
+	clientDrawingContext uintptr,
+	baselineOriginXBits uintptr,
+	baselineOriginYBits uintptr,
+	measuringMode uintptr,
+	glyphRun uintptr,
+	glyphRunDescription uintptr,
+	clientDrawingEffect uintptr,
+) uintptr {
+	tr := (*goTextRenderer)(unsafe.Pointer(this))
+	if tr.bitmapTarget == 0 {
+		return _S_OK
+	}
+
+	// Delegate to IDWriteBitmapRenderTarget::DrawGlyphRun (vtable index 3).
+	// Signature: HRESULT DrawGlyphRun(FLOAT baselineOriginX, FLOAT baselineOriginY,
+	//   DWRITE_MEASURING_MODE measuringMode, DWRITE_GLYPH_RUN const *glyphRun,
+	//   IDWriteRenderingParams *renderingParams, COLORREF textColor,
+	//   RECT *blackBoxRect)
+	var blackBoxRect RECT
+	comCall(tr.bitmapTarget, 3,
+		baselineOriginXBits, // float32 bits passed through as-is
+		baselineOriginYBits, // float32 bits passed through as-is
+		measuringMode,
+		glyphRun,
+		tr.renderParams,
+		uintptr(tr.textColor),
+		uintptr(unsafe.Pointer(&blackBoxRect)),
+	)
+	return _S_OK
+}
+
+// goTR_DrawUnderline — no-op.
+func goTR_DrawUnderline(this, clientDrawingContext, baselineOriginX, baselineOriginY, underline, clientDrawingEffect uintptr) uintptr {
+	return _S_OK
+}
+
+// goTR_DrawStrikethrough — no-op.
+func goTR_DrawStrikethrough(this, clientDrawingContext, baselineOriginX, baselineOriginY, strikethrough, clientDrawingEffect uintptr) uintptr {
+	return _S_OK
+}
+
+// goTR_DrawInlineObject — no-op.
+func goTR_DrawInlineObject(this, clientDrawingContext, originX, originY, inlineObject uintptr, isSideways, isRightToLeft uintptr, clientDrawingEffect uintptr) uintptr {
+	return _S_OK
+}
+
+// --- gdiInteropBackend methods ---
+
+func (b *gdiInteropBackend) Init(factory uintptr) error {
+	// IDWriteFactory::GetGdiInterop (vtable index 17)
+	var gdiInterop uintptr
+	_, err := comCall(factory, 17, uintptr(unsafe.Pointer(&gdiInterop)))
+	if err != nil {
+		return err
+	}
+	b.gdiInterop = gdiInterop
+
+	// IDWriteFactory::CreateRenderingParams (vtable index 10)
+	var renderParams uintptr
+	_, err = comCall(factory, 10, uintptr(unsafe.Pointer(&renderParams)))
+	if err != nil {
+		comRelease(gdiInterop)
+		b.gdiInterop = 0
+		return err
+	}
+	b.renderParams = renderParams
+
+	// Create initial bitmap target (small, will be resized)
+	err = b.createBitmapTarget(1, 1)
+	if err != nil {
+		comRelease(renderParams)
+		comRelease(gdiInterop)
+		b.renderParams = 0
+		b.gdiInterop = 0
+		return err
+	}
+
+	// Create the Go text renderer COM object.
+	vtable := initGoTextRendererVtable()
+	b.renderer = &goTextRenderer{
+		vtable:       vtable,
+		refCount:     1,
+		bitmapTarget: b.bitmapTarget,
+		renderParams: b.renderParams,
+	}
+
+	return nil
+}
+
+func (b *gdiInteropBackend) createBitmapTarget(width, height int) error {
+	if b.bitmapTarget != 0 {
+		comRelease(b.bitmapTarget)
+		b.bitmapTarget = 0
+	}
+
+	// IDWriteGdiInterop::CreateBitmapRenderTarget (vtable index 7)
+	// Signature: HRESULT CreateBitmapRenderTarget(HDC hdc, UINT32 width, UINT32 height,
+	//   IDWriteBitmapRenderTarget **renderTarget)
+	var target uintptr
+	_, err := comCall(b.gdiInterop, 7,
+		0, // hdc = NULL (use screen DC)
+		uintptr(uint32(width)),
+		uintptr(uint32(height)),
+		uintptr(unsafe.Pointer(&target)),
+	)
+	if err != nil {
+		return err
+	}
+	b.bitmapTarget = target
+	b.width = width
+	b.height = height
+	return nil
+}
+
+func (b *gdiInteropBackend) BeginDraw(width, height int) error {
+	// Resize if needed.
+	if width != b.width || height != b.height {
+		if b.bitmapTarget != 0 {
+			// Try IDWriteBitmapRenderTarget::Resize (vtable index 10)
+			_, err := comCall(b.bitmapTarget, 10,
+				uintptr(uint32(width)),
+				uintptr(uint32(height)),
+			)
+			if err != nil {
+				// Fallback: recreate
+				if err2 := b.createBitmapTarget(width, height); err2 != nil {
+					return err2
+				}
+			} else {
+				b.width = width
+				b.height = height
+			}
+		} else {
+			if err := b.createBitmapTarget(width, height); err != nil {
+				return err
+			}
+		}
+		// Update renderer's bitmapTarget pointer in case it was recreated.
+		if b.renderer != nil {
+			b.renderer.bitmapTarget = b.bitmapTarget
+		}
+	}
+
+	// Clear the bitmap to black (0x000000) using PatBlt.
+	// IDWriteBitmapRenderTarget::GetMemoryDC (vtable index 4)
+	// Signature: HDC GetMemoryDC() — returns HDC directly (not HRESULT).
+	memDC, _ := comCall(b.bitmapTarget, 4)
+	if memDC != 0 {
+		procPatBlt.Call(memDC, 0, 0, uintptr(width), uintptr(height), _PATCOPY)
+	}
+	return nil
+}
+
+func (b *gdiInteropBackend) DrawGlyphRun(baselineOriginX, baselineOriginY float32,
+	measuringMode uint32, glyphRun uintptr, glyphRunDesc uintptr, textColor uint32) error {
+
+	if b.bitmapTarget == 0 {
+		return syscall.EINVAL
+	}
+
+	var blackBoxRect RECT
+	_, err := comCall(b.bitmapTarget, 3,
+		uintptr(math.Float32bits(baselineOriginX)),
+		uintptr(math.Float32bits(baselineOriginY)),
+		uintptr(measuringMode),
+		glyphRun,
+		b.renderParams,
+		uintptr(textColor),
+		uintptr(unsafe.Pointer(&blackBoxRect)),
+	)
+	return err
+}
+
+func (b *gdiInteropBackend) EndDraw() ([]byte, int, error) {
+	if b.bitmapTarget == 0 {
+		return nil, 0, syscall.EINVAL
+	}
+
+	// Get memory DC.
+	memDC, _ := comCall(b.bitmapTarget, 4)
+	if memDC == 0 {
+		return nil, 0, syscall.EINVAL
+	}
+
+	// Get the current bitmap from the DC.
+	hBitmap, _, _ := procGetCurrentObject.Call(memDC, _OBJ_BITMAP)
+	if hBitmap == 0 {
+		return nil, 0, syscall.EINVAL
+	}
+
+	// Prepare BITMAPINFO for GetDIBits — request top-down 32bpp BGRA.
+	bmi := BITMAPINFO{
+		BmiHeader: BITMAPINFOHEADER{
+			BiSize:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
+			BiWidth:       int32(b.width),
+			BiHeight:      -int32(b.height), // negative = top-down
+			BiPlanes:      1,
+			BiBitCount:    32,
+			BiCompression: BI_RGB,
+		},
+	}
+
+	stride := b.width * 4
+	pixels := make([]byte, stride*b.height)
+
+	ret, _, _ := procGetDIBits.Call(
+		memDC,
+		hBitmap,
+		0,
+		uintptr(b.height),
+		uintptr(unsafe.Pointer(&pixels[0])),
+		uintptr(unsafe.Pointer(&bmi)),
+		DIB_RGB_COLORS,
+	)
+	if ret == 0 {
+		return nil, 0, syscall.EINVAL
+	}
+
+	return pixels, stride, nil
+}
+
+func (b *gdiInteropBackend) Close() {
+	if b.bitmapTarget != 0 {
+		comRelease(b.bitmapTarget)
+		b.bitmapTarget = 0
+	}
+	if b.renderParams != 0 {
+		comRelease(b.renderParams)
+		b.renderParams = 0
+	}
+	if b.gdiInterop != 0 {
+		comRelease(b.gdiInterop)
+		b.gdiInterop = 0
+	}
+	b.renderer = nil
+}
+
 // DWriteTextRenderer implements core.TextRenderer using DirectWrite COM APIs.
 type DWriteTextRenderer struct {
 	factory    uintptr // IDWriteFactory*
@@ -110,8 +547,8 @@ type DWriteTextRenderer struct {
 	fontWeight int
 	fontSize   float64
 
-	// FreeType fallback for pixel rendering (until D2D is integrated)
-	drawFallback *freetype.FreeTypeTextRenderer
+	// GDI Interop backend for pixel rendering.
+	backend *gdiInteropBackend
 
 	mu sync.Mutex
 }
@@ -311,12 +748,164 @@ func (tr *DWriteTextRenderer) MeasureText(text string) core.Size {
 }
 
 func (tr *DWriteTextRenderer) DrawText(canvas core.Canvas, text string, x, y float64, paint *core.Paint) {
-	// Use FreeType for pixel rendering until D2D integration in Phase 2.
-	// Measurement is handled by DirectWrite (MeasureText/CreateTextLayout).
-	if tr.drawFallback == nil {
-		tr.drawFallback = freetype.NewFreeTypeTextRenderer()
+	if text == "" || canvas == nil {
+		return
 	}
-	tr.drawFallback.DrawText(canvas, text, x, y, paint)
+	target := canvas.Target()
+	if target == nil {
+		return
+	}
+
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+
+	// Lazily initialize GDI Interop backend.
+	if tr.backend == nil {
+		b := &gdiInteropBackend{}
+		if err := b.Init(tr.factory); err != nil {
+			return
+		}
+		tr.backend = b
+	}
+
+	// Determine text color as COLORREF (0x00BBGGRR).
+	var clrR, clrG, clrB uint8
+	if paint != nil && paint.Color.A != 0 {
+		clrR = paint.Color.R
+		clrG = paint.Color.G
+		clrB = paint.Color.B
+	}
+	colorRef := uint32(clrB)<<16 | uint32(clrG)<<8 | uint32(clrR)
+
+	// Measure text to determine bitmap size.
+	size := tr.measureTextLocked(text)
+	bmpW := int(math.Ceil(size.Width)) + 4 // small padding
+	bmpH := int(math.Ceil(size.Height)) + 4
+	if bmpW <= 0 || bmpH <= 0 {
+		return
+	}
+
+	// Prepare bitmap.
+	if err := tr.backend.BeginDraw(bmpW, bmpH); err != nil {
+		return
+	}
+
+	// Create text layout for drawing.
+	layout, err := tr.createTextLayout(text, float64(bmpW), float64(bmpH))
+	if err != nil || layout == 0 {
+		return
+	}
+	defer comRelease(layout)
+
+	// Set text color on the custom renderer.
+	tr.backend.renderer.textColor = colorRef
+
+	// Call IDWriteTextLayout::Draw (vtable index 58).
+	// Signature: HRESULT Draw(void *clientDrawingContext,
+	//   IDWriteTextRenderer *renderer, FLOAT originX, FLOAT originY)
+	//
+	// Keep the renderer alive across the COM call — take a pointer before
+	// converting to uintptr and use runtime.KeepAlive after the call.
+	renderer := tr.backend.renderer
+	comCall(layout, 58,
+		0, // clientDrawingContext (NULL)
+		uintptr(unsafe.Pointer(renderer)), // our custom COM renderer
+		uintptr(math.Float32bits(0)),       // originX
+		uintptr(math.Float32bits(0)),       // originY
+	)
+	_ = renderer // prevent GC from collecting before comCall returns
+
+	// Read pixels from the GDI bitmap.
+	pixels, stride, err := tr.backend.EndDraw()
+	if err != nil {
+		return
+	}
+
+	// Composite BGRA pixels onto the canvas RGBA image.
+	compositeToCanvas(target, int(x), int(y), bmpW, bmpH, pixels, stride, clrR, clrG, clrB)
+}
+
+// measureTextLocked measures text — must be called with tr.mu held.
+func (tr *DWriteTextRenderer) measureTextLocked(text string) core.Size {
+	layout, err := tr.createTextLayout(text, 100000, 100000)
+	if err != nil || layout == 0 {
+		return core.Size{}
+	}
+	defer comRelease(layout)
+
+	metrics, err := getTextMetrics(layout)
+	if err != nil {
+		return core.Size{}
+	}
+	return core.Size{
+		Width:  float64(metrics.WidthIncludingTrailingWhitespace),
+		Height: float64(metrics.Height),
+	}
+}
+
+// compositeToCanvas blits BGRA pixel data from the DirectWrite bitmap onto
+// the target image.RGBA at position (dx, dy).
+//
+// IDWriteBitmapRenderTarget renders text on a black background. The RGB channels
+// contain the text color blended with black, and we use the luminance as the
+// coverage (alpha) value. For colored text we reconstruct alpha from the
+// maximum of the RGB channels and use the requested text color.
+func compositeToCanvas(target *image.RGBA, dx, dy, srcW, srcH int, pixels []byte, stride int, textR, textG, textB uint8) {
+	bounds := target.Bounds()
+	for py := 0; py < srcH; py++ {
+		dstY := dy + py
+		if dstY < bounds.Min.Y || dstY >= bounds.Max.Y {
+			continue
+		}
+		for px := 0; px < srcW; px++ {
+			dstX := dx + px
+			if dstX < bounds.Min.X || dstX >= bounds.Max.X {
+				continue
+			}
+
+			si := py*stride + px*4
+			if si+3 >= len(pixels) {
+				continue
+			}
+
+			// BGRA layout from GetDIBits.
+			sb := pixels[si+0]
+			sg := pixels[si+1]
+			sr := pixels[si+2]
+			// pixels[si+3] is always 0 for GDI bitmaps (no alpha channel).
+
+			// Use maximum channel as coverage — handles both grayscale and ClearType AA.
+			alpha := sr
+			if sg > alpha {
+				alpha = sg
+			}
+			if sb > alpha {
+				alpha = sb
+			}
+			if alpha == 0 {
+				continue // fully transparent, skip
+			}
+
+			// Alpha-blend onto destination using "over" compositing.
+			di := (dstY-bounds.Min.Y)*target.Stride + (dstX-bounds.Min.X)*4
+			if di+3 >= len(target.Pix) {
+				continue
+			}
+
+			a := uint32(alpha)
+			invA := 255 - a
+
+			dstR := target.Pix[di+0]
+			dstG := target.Pix[di+1]
+			dstB := target.Pix[di+2]
+			dstA := target.Pix[di+3]
+
+			target.Pix[di+0] = uint8((a*uint32(textR) + invA*uint32(dstR)) / 255)
+			target.Pix[di+1] = uint8((a*uint32(textG) + invA*uint32(dstG)) / 255)
+			target.Pix[di+2] = uint8((a*uint32(textB) + invA*uint32(dstB)) / 255)
+			target.Pix[di+3] = uint8((a*255 + invA*uint32(dstA)) / 255)
+		}
+	}
 }
 
 func (tr *DWriteTextRenderer) CreateTextLayout(text string, paint *core.Paint, maxWidth float64) *core.TextLayoutResult {
@@ -397,6 +986,10 @@ func (tr *DWriteTextRenderer) Close() {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 
+	if tr.backend != nil {
+		tr.backend.Close()
+		tr.backend = nil
+	}
 	if tr.textFormat != 0 {
 		comRelease(tr.textFormat)
 		tr.textFormat = 0
