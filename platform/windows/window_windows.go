@@ -97,6 +97,7 @@ var (
 	procIsWindowVisible   = user32.NewProc("IsWindowVisible")
 	procGetWindowRect     = user32.NewProc("GetWindowRect")
 	procGetWindowLongW    = user32.NewProc("GetWindowLongW")
+	procScreenToClient    = user32.NewProc("ScreenToClient")
 
 	procCreateCompatibleDC = gdi32.NewProc("CreateCompatibleDC")
 	procCreateDIBSection   = gdi32.NewProc("CreateDIBSection")
@@ -399,10 +400,10 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		delta := int16(wParam >> 16)
 		// WHEEL_DELTA is 120; normalize to notch count
 		notches := float64(delta) / 120.0
-		// lParam contains screen coordinates; convert to client
-		x := int(int16(lParam & 0xFFFF))
-		y := int(int16((lParam >> 16) & 0xFFFF))
-		w.dispatchScroll(float64(x), float64(y), 0, notches)
+		// lParam contains SCREEN coordinates — convert to client coordinates
+		pt := POINT{X: int32(int16(lParam & 0xFFFF)), Y: int32(int16((lParam >> 16) & 0xFFFF))}
+		procScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&pt)))
+		w.dispatchScroll(float64(pt.X), float64(pt.Y), 0, notches)
 		return 0
 	}
 
