@@ -80,6 +80,14 @@ func inflateTextView(attrs *AttributeSet) *core.Node {
 		tv.Node().GetStyle().TextColor = clr
 	}
 
+	// Apply gravity for text alignment
+	switch attrs.GetString("gravity") {
+	case "center":
+		tv.Node().GetStyle().Gravity = core.GravityCenter
+	case "end", "right":
+		tv.Node().GetStyle().Gravity = core.GravityEnd
+	}
+
 	return tv.Node()
 }
 
