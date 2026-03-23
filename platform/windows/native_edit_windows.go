@@ -66,6 +66,8 @@ type win32NativeEdit struct {
 	inputType platform.InputType
 	style     uintptr // current window style bits
 
+	fontSize float64 // last set font size (physical px) for vertical centering
+
 	onTextChanged func(string)
 	onSubmit      func(string)
 
@@ -186,6 +188,16 @@ func (e *win32NativeEdit) UpdatePosition() {
 		h = 1
 	}
 
+	// For single-line EDIT: size the control to fit the font and center vertically.
+	// This avoids text sitting at the top of a tall control.
+	if !e.multiLine && e.fontSize > 0 {
+		editH := e.fontSize + 6*dpi // font height + small internal padding
+		if editH < h {
+			absY += (h - editH) / 2 // center vertically
+			h = editH
+		}
+	}
+
 	ix, iy, iw, ih := int(absX), int(absY), int(w), int(h)
 
 	// Viewport clipping: hide if outside the ScrollView viewport
@@ -242,6 +254,7 @@ func (e *win32NativeEdit) SetPlaceholder(text string) {
 }
 
 func (e *win32NativeEdit) SetFont(family string, size float64, weight int) {
+	e.fontSize = size
 	if e.hFont != 0 {
 		procDeleteObject.Call(e.hFont)
 	}
