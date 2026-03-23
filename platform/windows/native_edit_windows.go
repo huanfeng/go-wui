@@ -35,12 +35,27 @@ const (
 	emSetLimitText = 0x00C5
 )
 
+// Win32 constants for subclassing and keyboard handling.
+const (
+	gwlpWndProc    = -4 // GWLP_WNDPROC
+	wmKeyDown      = 0x0100
+	wmMouseWheel   = 0x020A
+	vkA            = 0x41
+	emGetLineCount = 0x00BA
+	emGetFirstVisibleLine = 0x00CE
+	sbVert         = 1
+)
+
 // procSendMessageW and procSetFocus are loaded lazily so that the
 // native_edit module does not duplicate declarations from other files.
 var (
 	nativeEditProcsOnce sync.Once
 	procSendMessageW    *syscall.LazyProc
 	procSetFocus        *syscall.LazyProc
+	procSetWindowLongPtrW *syscall.LazyProc
+	procCallWindowProcW   *syscall.LazyProc
+	procGetScrollInfo     *syscall.LazyProc
+	procGetKeyState       *syscall.LazyProc
 )
 
 func initNativeEditProcs() {
@@ -48,7 +63,59 @@ func initNativeEditProcs() {
 		u32 := syscall.NewLazyDLL("user32.dll")
 		procSendMessageW = u32.NewProc("SendMessageW")
 		procSetFocus = u32.NewProc("SetFocus")
+		procSetWindowLongPtrW = u32.NewProc("SetWindowLongPtrW")
+		procCallWindowProcW = u32.NewProc("CallWindowProcW")
+		procGetScrollInfo = u32.NewProc("GetScrollInfo")
+		procGetKeyState = u32.NewProc("GetKeyState")
 	})
+}
+
+// editSubclassMap stores hwnd → *win32NativeEdit for the subclass wndProc.
+var editSubclassMap sync.Map
+
+// editSubclassProc is the subclassed wndProc for EDIT controls.
+// It handles Ctrl+A (select all) and forwards unhandled scroll wheel events.
+func editSubclassProc(hwnd, msg, wParam, lParam uintptr) uintptr {
+	val, ok := editSubclassMap.Load(hwnd)
+	if !ok {
+		return 0
+	}
+	ne := val.(*win32NativeEdit)
+
+	switch msg {
+	case wmKeyDown:
+		// Ctrl+A: select all (standard EDIT doesn't support this natively)
+		if wParam == vkA {
+			state, _, _ := procGetKeyState.Call(0x11) // VK_CONTROL
+			if int16(state) < 0 { // high bit set = pressed
+				procSendMessageW.Call(hwnd, emSetSel, 0, ^uintptr(0)) // 0, -1
+				return 0
+			}
+		}
+
+	case wmMouseWheel:
+		// For multi-line EDIT: if content doesn't need scrolling, forward to parent.
+		if ne.multiLine {
+			lineCount, _, _ := procSendMessageW.Call(hwnd, emGetLineCount, 0, 0)
+			// If content fits in the control (roughly), forward wheel to parent
+			if ne.fontSize > 0 {
+				visibleLines := int(float64(ne.lastH) / ne.fontSize)
+				if int(lineCount) <= visibleLines {
+					// Forward to parent window
+					procSendMessageW.Call(ne.parentHwnd, wmMouseWheel, wParam, lParam)
+					return 0
+				}
+			}
+		} else {
+			// Single-line EDIT: always forward wheel to parent
+			procSendMessageW.Call(ne.parentHwnd, wmMouseWheel, wParam, lParam)
+			return 0
+		}
+	}
+
+	// Call original wndProc
+	ret, _, _ := procCallWindowProcW.Call(ne.origWndProc, hwnd, msg, wParam, lParam)
+	return ret
 }
 
 // editInset is the pixel inset from the node bounds for the native EDIT
@@ -57,10 +124,11 @@ const editInset = 2.0
 
 // win32NativeEdit wraps a Win32 EDIT control and implements platform.NativeEditText.
 type win32NativeEdit struct {
-	hwnd       uintptr // EDIT control HWND
-	parentHwnd uintptr // parent window HWND
-	node       *core.Node
-	hFont      uintptr // GDI font handle
+	hwnd        uintptr // EDIT control HWND
+	parentHwnd  uintptr // parent window HWND
+	origWndProc uintptr // original wndProc before subclassing
+	node        *core.Node
+	hFont       uintptr // GDI font handle
 
 	multiLine bool
 	inputType platform.InputType
@@ -99,13 +167,22 @@ func newNativeEdit(parentHwnd uintptr) *win32NativeEdit {
 		0, // lpParam
 	)
 
-	return &win32NativeEdit{
+	ne := &win32NativeEdit{
 		hwnd:       hwnd,
 		parentHwnd: parentHwnd,
 		style:      style,
 		lastX:      -1, lastY: -1,
 		hidden:     true, // starts hidden — UpdatePosition will show it
 	}
+
+	// Subclass the EDIT control to handle Ctrl+A and wheel forwarding.
+	editSubclassMap.Store(hwnd, ne)
+	ne.origWndProc, _, _ = procSetWindowLongPtrW.Call(
+		hwnd, uintptr(0xFFFFFFFFFFFFFFFC),
+		syscall.NewCallback(editSubclassProc),
+	)
+
+	return ne
 }
 
 // ---------- platform.NativeEditText implementation ----------
@@ -370,6 +447,13 @@ func (e *win32NativeEdit) recreateControl() {
 	)
 	e.style = style
 
+	// Re-subclass the new control.
+	editSubclassMap.Store(e.hwnd, e)
+	e.origWndProc, _, _ = procSetWindowLongPtrW.Call(
+		e.hwnd, uintptr(0xFFFFFFFFFFFFFFFC),
+		syscall.NewCallback(editSubclassProc),
+	)
+
 	// Restore state.
 	if oldText != "" {
 		e.SetText(oldText)
@@ -384,6 +468,9 @@ func (e *win32NativeEdit) recreateControl() {
 
 // Destroy releases all GDI resources and removes the native control.
 func (e *win32NativeEdit) Destroy() {
+	if e.hwnd != 0 {
+		editSubclassMap.Delete(e.hwnd)
+	}
 	if e.hFont != 0 {
 		procDeleteObject.Call(e.hFont)
 		e.hFont = 0

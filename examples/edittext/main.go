@@ -107,7 +107,8 @@ func buildFixedSection() *core.Node {
 	section := core.NewNode("LinearLayout")
 	section.SetLayout(ll)
 	section.SetStyle(&core.Style{
-		Width: core.Dimension{Unit: core.DimensionMatchParent},
+		Width:           core.Dimension{Unit: core.DimensionMatchParent},
+		BackgroundColor: core.ParseColor("#F5F5F5"),
 	})
 	section.SetPadding(core.Insets{Left: 16, Top: 12, Right: 16, Bottom: 12})
 
