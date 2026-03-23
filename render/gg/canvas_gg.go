@@ -49,6 +49,23 @@ func NewGGCanvas(width, height int, textRenderer core.TextRenderer) *GGCanvas {
 	}
 }
 
+// NewGGCanvasForImage creates a GGCanvas backed by an existing *image.RGBA.
+// The image pixels are cleared to transparent. This avoids re-allocating the
+// large backing buffer each frame — only a lightweight gg.Context is created.
+func NewGGCanvasForImage(img *image.RGBA, textRenderer core.TextRenderer) *GGCanvas {
+	clear(img.Pix)
+	bounds := img.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	dc := foggg.NewContextForRGBA(img)
+	return &GGCanvas{
+		dc:           dc,
+		textRenderer: textRenderer,
+		width:        w,
+		height:       h,
+		clip:         clipRect{x1: 0, y1: 0, x2: float64(w), y2: float64(h), active: false},
+	}
+}
+
 // ---------- Drawing primitives ----------
 
 // DrawRect draws a filled or stroked rectangle.

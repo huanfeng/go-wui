@@ -106,6 +106,7 @@ func buildFixedSection() *core.Node {
 	ll := &layout.LinearLayout{Orientation: layout.Vertical, Spacing: 8}
 	section := core.NewNode("LinearLayout")
 	section.SetLayout(ll)
+	section.SetPainter(&containerBgPainter{}) // needed to draw BackgroundColor
 	section.SetStyle(&core.Style{
 		Width:           core.Dimension{Unit: core.DimensionMatchParent},
 		BackgroundColor: core.ParseColor("#F5F5F5"),
@@ -356,4 +357,30 @@ func newFieldLabel(text string) *widget.TextView {
 		TextColor: core.ParseColor("#757575"),
 	})
 	return tv
+}
+
+// containerBgPainter draws background for programmatic container nodes.
+// Needed because core.NewNode doesn't set a painter — without one,
+// BackgroundColor in the style is never rendered.
+type containerBgPainter struct{}
+
+func (p *containerBgPainter) Measure(node *core.Node, ws, hs core.MeasureSpec) core.Size {
+	w, h := 0.0, 0.0
+	if ws.Mode == core.MeasureModeExact {
+		w = ws.Size
+	}
+	if hs.Mode == core.MeasureModeExact {
+		h = hs.Size
+	}
+	return core.Size{Width: w, Height: h}
+}
+
+func (p *containerBgPainter) Paint(node *core.Node, canvas core.Canvas) {
+	s := node.GetStyle()
+	if s == nil || s.BackgroundColor.A == 0 {
+		return
+	}
+	b := node.Bounds()
+	paint := &core.Paint{Color: s.BackgroundColor, DrawStyle: core.PaintFill}
+	canvas.DrawRect(core.Rect{Width: b.Width, Height: b.Height}, paint)
 }

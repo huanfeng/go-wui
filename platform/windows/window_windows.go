@@ -204,6 +204,14 @@ type win32Window struct {
 	onDPIChanged   func(dpi float64)
 	onFocusChanged func(focused bool)
 
+	// Cached rendering buffers — reused across frames, recreated on resize only.
+	cachedImage *image.RGBA     // canvas backing buffer (avoids re-alloc per frame)
+	dibMemDC    uintptr         // cached memory DC for presentation
+	dibBitmap   uintptr         // cached DIB section HBITMAP
+	dibBits     unsafe.Pointer  // pointer to DIB pixel data
+	dibWidth    int             // cached DIB width
+	dibHeight   int             // cached DIB height
+
 	mu sync.Mutex
 }
 
@@ -344,6 +352,8 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_DESTROY:
+		w.releaseCachedDIB()
+		w.cachedImage = nil
 		windowMap.Delete(hwnd)
 		// Post WM_QUIT to exit the message loop
 		procPostQuitMessage.Call(0)
@@ -711,7 +721,19 @@ func (w *win32Window) render() {
 	if w.textRenderer == nil {
 		w.textRenderer = w.plat.CreateTextRenderer()
 	}
-	canvas := gg.NewGGCanvas(width, height, w.textRenderer)
+
+	// Reuse the canvas backing image if the window size hasn't changed.
+	// Only the lightweight gg.Context is recreated; the large pixel buffer
+	// (~width*height*4 bytes) is kept across frames.
+	var canvas *gg.GGCanvas
+	if w.cachedImage != nil &&
+		w.cachedImage.Bounds().Dx() == width &&
+		w.cachedImage.Bounds().Dy() == height {
+		canvas = gg.NewGGCanvasForImage(w.cachedImage, w.textRenderer)
+	} else {
+		canvas = gg.NewGGCanvas(width, height, w.textRenderer)
+		w.cachedImage = canvas.Target()
+	}
 
 	// Measure
 	root := contentView
@@ -810,6 +832,8 @@ func PaintNode(node *core.Node, canvas core.Canvas) {
 }
 
 // present copies the RGBA image to the window using GDI.
+// The memory DC and DIB section are cached and reused across frames;
+// they are only recreated when the window size changes.
 func (w *win32Window) present(img *image.RGBA) {
 	if img == nil {
 		return
@@ -825,46 +849,55 @@ func (w *win32Window) present(img *image.RGBA) {
 	}
 	defer procReleaseDC.Call(w.hwnd, hdc)
 
-	memDC, _, _ := procCreateCompatibleDC.Call(hdc)
-	if memDC == 0 {
-		return
-	}
-	defer procDeleteDC.Call(memDC)
+	// Ensure cached DIB section matches the current dimensions.
+	if w.dibWidth != width || w.dibHeight != height {
+		w.releaseCachedDIB()
 
-	// Create DIB section
-	bmi := BITMAPINFO{
-		BmiHeader: BITMAPINFOHEADER{
-			BiSize:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
-			BiWidth:       int32(width),
-			BiHeight:      -int32(height), // top-down
-			BiPlanes:      1,
-			BiBitCount:    32,
-			BiCompression: BI_RGB,
-		},
-	}
+		memDC, _, _ := procCreateCompatibleDC.Call(hdc)
+		if memDC == 0 {
+			return
+		}
 
-	var bits unsafe.Pointer
-	hBitmap, _, _ := procCreateDIBSection.Call(
-		memDC,
-		uintptr(unsafe.Pointer(&bmi)),
-		DIB_RGB_COLORS,
-		uintptr(unsafe.Pointer(&bits)),
-		0,
-		0,
-	)
-	if hBitmap == 0 {
-		return
-	}
-	defer procDeleteObject.Call(hBitmap)
+		bmi := BITMAPINFO{
+			BmiHeader: BITMAPINFOHEADER{
+				BiSize:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
+				BiWidth:       int32(width),
+				BiHeight:      -int32(height), // top-down
+				BiPlanes:      1,
+				BiBitCount:    32,
+				BiCompression: BI_RGB,
+			},
+		}
 
-	procSelectObject.Call(memDC, hBitmap)
+		var bits unsafe.Pointer
+		hBitmap, _, _ := procCreateDIBSection.Call(
+			memDC,
+			uintptr(unsafe.Pointer(&bmi)),
+			DIB_RGB_COLORS,
+			uintptr(unsafe.Pointer(&bits)),
+			0,
+			0,
+		)
+		if hBitmap == 0 {
+			procDeleteDC.Call(memDC)
+			return
+		}
+
+		procSelectObject.Call(memDC, hBitmap)
+
+		w.dibMemDC = memDC
+		w.dibBitmap = hBitmap
+		w.dibBits = bits
+		w.dibWidth = width
+		w.dibHeight = height
+	}
 
 	// Copy pixels with RGBA -> BGRA conversion
 	pix := img.Pix
 	stride := img.Stride
 	dibStride := width * 4
 
-	dst := unsafe.Slice((*byte)(bits), height*dibStride)
+	dst := unsafe.Slice((*byte)(w.dibBits), height*dibStride)
 	for y := 0; y < height; y++ {
 		srcOff := y * stride
 		dstOff := y * dibStride
@@ -884,10 +917,25 @@ func (w *win32Window) present(img *image.RGBA) {
 		hdc,
 		0, 0,
 		uintptr(width), uintptr(height),
-		memDC,
+		w.dibMemDC,
 		0, 0,
 		SRCCOPY,
 	)
+}
+
+// releaseCachedDIB frees the cached GDI resources (memory DC + DIB section).
+func (w *win32Window) releaseCachedDIB() {
+	if w.dibBitmap != 0 {
+		procDeleteObject.Call(w.dibBitmap)
+		w.dibBitmap = 0
+	}
+	if w.dibMemDC != 0 {
+		procDeleteDC.Call(w.dibMemDC)
+		w.dibMemDC = 0
+	}
+	w.dibBits = nil
+	w.dibWidth = 0
+	w.dibHeight = 0
 }
 
 // ---------- Helpers ----------
