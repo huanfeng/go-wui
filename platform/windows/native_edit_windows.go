@@ -102,6 +102,7 @@ func newNativeEdit(parentHwnd uintptr) *win32NativeEdit {
 		parentHwnd: parentHwnd,
 		style:      style,
 		lastX:      -1, lastY: -1,
+		hidden:     true, // starts hidden — UpdatePosition will show it
 	}
 }
 
