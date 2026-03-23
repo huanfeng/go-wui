@@ -302,6 +302,20 @@ func (n *Node) ClearDirty() {
 	n.childDirty = false
 }
 
+// ---------- Position ----------
+
+// AbsolutePosition returns the node's position in root coordinate space
+// by summing all ancestor bounds' X/Y offsets.
+func (n *Node) AbsolutePosition() Point {
+	x, y := 0.0, 0.0
+	for node := n; node != nil; node = node.parent {
+		b := node.Bounds()
+		x += b.X
+		y += b.Y
+	}
+	return Point{X: x, Y: y}
+}
+
 // ---------- Search ----------
 
 // FindNodeById searches this node and its descendants for a node with the given id.

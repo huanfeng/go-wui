@@ -38,6 +38,16 @@ func DispatchEvent(root *Node, event Event, hitPoint Point) bool {
 	return false
 }
 
+// HitTest returns the deepest visible node that contains the given point.
+// Returns nil if no node contains the point.
+func HitTest(root *Node, point Point) *Node {
+	chain := buildHitChain(root, point, Point{})
+	if len(chain) == 0 {
+		return nil
+	}
+	return chain[len(chain)-1]
+}
+
 // buildHitChain finds the path from root to the deepest node containing the point.
 func buildHitChain(node *Node, point Point, offset Point) []*Node {
 	if node.GetVisibility() != Visible {

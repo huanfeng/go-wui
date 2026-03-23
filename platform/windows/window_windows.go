@@ -195,6 +195,8 @@ type win32Window struct {
 	dpiScale     float64 // DPI scale factor (1.0 at 96 DPI, 1.5 at 144 DPI)
 	dpiScaled    bool    // true after node tree has been DPI-scaled
 
+	lastHoverNode *core.Node // tracks which node the mouse is over for HoverEnter/Exit
+
 	onClose        func() bool
 	onResize       func(w, h int)
 	onDPIChanged   func(dpi float64)
@@ -371,7 +373,12 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_MOUSEMOVE:
 		x := int(int16(lParam & 0xFFFF))
 		y := int(int16((lParam >> 16) & 0xFFFF))
-		w.dispatchMotion(core.ActionMove, float64(x), float64(y), core.MouseButtonLeft)
+		// MK_LBUTTON (0x0001) indicates left button is held during move
+		if wParam&0x0001 != 0 {
+			w.dispatchMotion(core.ActionMove, float64(x), float64(y), core.MouseButtonLeft)
+		} else {
+			w.dispatchMotion(core.ActionHoverMove, float64(x), float64(y), core.MouseButtonLeft)
+		}
 		return 0
 
 	case WM_LBUTTONDOWN:
@@ -420,6 +427,34 @@ func (w *win32Window) dispatchMotion(action core.MotionAction, x, y float64, but
 	if w.contentView == nil {
 		return
 	}
+
+	// Hover tracking: send HoverEnter/HoverExit when the deepest hit node changes
+	if action == core.ActionHoverMove {
+		hitPoint := core.Point{X: x, Y: y}
+		currentTarget := core.HitTest(w.contentView, hitPoint)
+		if currentTarget != w.lastHoverNode {
+			// Send HoverExit to old target
+			if w.lastHoverNode != nil {
+				exitEvt := core.NewMotionEvent(core.ActionHoverExit, x, y)
+				if h := w.lastHoverNode.GetHandler(); h != nil {
+					if h.OnEvent(w.lastHoverNode, exitEvt) {
+						w.Invalidate()
+					}
+				}
+			}
+			// Send HoverEnter to new target
+			if currentTarget != nil {
+				enterEvt := core.NewMotionEvent(core.ActionHoverEnter, x, y)
+				if h := currentTarget.GetHandler(); h != nil {
+					if h.OnEvent(currentTarget, enterEvt) {
+						w.Invalidate()
+					}
+				}
+			}
+			w.lastHoverNode = currentTarget
+		}
+	}
+
 	evt := core.NewMotionEvent(action, x, y)
 	evt.Button = button
 	evt.RawX = x

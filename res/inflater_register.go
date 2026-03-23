@@ -23,6 +23,12 @@ func RegisterBuiltinViews(li *LayoutInflater) {
 	li.RegisterView("RadioGroup", inflateRadioGroup)
 	li.RegisterView("ProgressBar", inflateProgressBar)
 	li.RegisterView("EditText", inflateEditText)
+
+	// Phase 3 — List & Navigation
+	li.RegisterView("Toolbar", inflateToolbar)
+	li.RegisterView("TabLayout", inflateTabLayout)
+	li.RegisterView("ViewPager", inflateViewPager)
+	li.RegisterView("RecyclerView", inflateRecyclerView)
 }
 
 func inflateLinearLayout(attrs *AttributeSet) *core.Node {
@@ -225,6 +231,58 @@ func inflateEditText(attrs *AttributeSet) *core.Node {
 	}
 
 	return et.Node()
+}
+
+func inflateToolbar(attrs *AttributeSet) *core.Node {
+	title := attrs.GetString("title")
+	tb := widget.NewToolbar(title)
+	applyCommonAttrs(tb.Node(), attrs)
+
+	if subtitle := attrs.GetString("subtitle"); subtitle != "" {
+		tb.SetSubtitle(subtitle)
+	}
+	if size := attrs.GetDimension("textSize"); size.Value > 0 {
+		tb.Node().GetStyle().FontSize = size.Value
+	}
+	if clr := attrs.GetColor("textColor"); clr.A > 0 {
+		tb.Node().GetStyle().TextColor = clr
+	}
+	if bg := attrs.GetColor("backgroundColor"); bg.A > 0 {
+		tb.Node().GetStyle().BackgroundColor = bg
+	}
+
+	return tb.Node()
+}
+
+func inflateTabLayout(attrs *AttributeSet) *core.Node {
+	tl := widget.NewTabLayout()
+	applyCommonAttrs(tl.Node(), attrs)
+
+	if bg := attrs.GetColor("backgroundColor"); bg.A > 0 {
+		tl.Node().GetStyle().BackgroundColor = bg
+	}
+	if clr := attrs.GetColor("textColor"); clr.A > 0 {
+		tl.Node().GetStyle().TextColor = clr
+	}
+
+	return tl.Node()
+}
+
+func inflateViewPager(attrs *AttributeSet) *core.Node {
+	vp := widget.NewViewPager()
+	applyCommonAttrs(vp.Node(), attrs)
+	return vp.Node()
+}
+
+func inflateRecyclerView(attrs *AttributeSet) *core.Node {
+	itemHeight := attrs.GetDimension("itemHeight")
+	h := 48.0
+	if itemHeight.Value > 0 {
+		h = itemHeight.Value
+	}
+	rv := widget.NewRecyclerView(h)
+	applyCommonAttrs(rv.Node(), attrs)
+	return rv.Node()
 }
 
 // containerPainter is a simple painter for layout containers that draws

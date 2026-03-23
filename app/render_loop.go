@@ -21,8 +21,19 @@ func PaintNode(node *core.Node, canvas core.Canvas) {
 	}
 	// Skip child painting if the painter already handled it
 	if node.GetData("paintsChildren") == nil {
+		var overlays []*core.Node
 		for _, child := range node.Children() {
+			if child.GetData("isOverlay") != nil {
+				overlays = append(overlays, child)
+				continue
+			}
 			PaintNode(child, canvas)
+		}
+		// Paint overlays last, at full parent bounds (on top of all content)
+		for _, overlay := range overlays {
+			overlay.SetBounds(core.Rect{X: 0, Y: 0, Width: b.Width, Height: b.Height})
+			overlay.SetMeasuredSize(core.Size{Width: b.Width, Height: b.Height})
+			PaintNode(overlay, canvas)
 		}
 	}
 	canvas.Restore()

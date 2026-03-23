@@ -58,6 +58,10 @@ func (ll *LinearLayout) measureVertical(node *core.Node, widthSpec, heightSpec c
 		if child.GetVisibility() == core.Gone {
 			continue
 		}
+		// Skip overlay nodes — they are rendered separately on top of the tree
+		if child.GetData("isOverlay") != nil {
+			continue
+		}
 		visibleCount++
 
 		style := child.GetStyle()
@@ -150,6 +154,9 @@ func (ll *LinearLayout) arrangeVertical(node *core.Node, bounds core.Rect) {
 		if child.GetVisibility() == core.Gone {
 			continue
 		}
+		if child.GetData("isOverlay") != nil {
+			continue
+		}
 		sz := child.MeasuredSize()
 
 		// Cross-axis (horizontal) alignment
@@ -196,6 +203,9 @@ func (ll *LinearLayout) measureHorizontal(node *core.Node, widthSpec, heightSpec
 	// First pass: measure non-weighted children, accumulate weights
 	for _, child := range children {
 		if child.GetVisibility() == core.Gone {
+			continue
+		}
+		if child.GetData("isOverlay") != nil {
 			continue
 		}
 		visibleCount++
@@ -288,6 +298,9 @@ func (ll *LinearLayout) arrangeHorizontal(node *core.Node, bounds core.Rect) {
 
 	for _, child := range node.Children() {
 		if child.GetVisibility() == core.Gone {
+			continue
+		}
+		if child.GetData("isOverlay") != nil {
 			continue
 		}
 		sz := child.MeasuredSize()
