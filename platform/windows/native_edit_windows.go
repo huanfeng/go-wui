@@ -1,27 +1,27 @@
 package windows
 
 import (
-	"fmt"
 	"sync"
 	"syscall"
 	"unsafe"
 
 	"gowui/core"
+	"gowui/layout"
 	"gowui/platform"
 )
 
 // Win32 EDIT control styles and messages.
 const (
-	wsChild      = 0x40000000
-	wsBorder     = 0x00800000
-	wsTabStop    = 0x00010000
-	esLeft       = 0x0000
-	esCenter     = 0x0001
-	esMultiLine  = 0x0004
-	esPassword   = 0x0020
+	wsChild       = 0x40000000
+	wsBorder      = 0x00800000
+	wsTabStop     = 0x00010000
+	esLeft        = 0x0000
+	esCenter      = 0x0001
+	esMultiLine   = 0x0004
+	esPassword    = 0x0020
 	esAutoHScroll = 0x0080
 	esAutoVScroll = 0x0040
-	esNumber     = 0x2000
+	esNumber      = 0x2000
 
 	wmSetText       = 0x000C
 	wmGetText       = 0x000D
@@ -51,6 +51,10 @@ func initNativeEditProcs() {
 	})
 }
 
+// editInset is the pixel inset from the node bounds for the native EDIT
+// so the framework's custom border is visible around it.
+const editInset = 2.0
+
 // win32NativeEdit wraps a Win32 EDIT control and implements platform.NativeEditText.
 type win32NativeEdit struct {
 	hwnd       uintptr // EDIT control HWND
@@ -64,15 +68,20 @@ type win32NativeEdit struct {
 
 	onTextChanged func(string)
 	onSubmit      func(string)
+
+	lastX, lastY, lastW, lastH int // cached position to avoid redundant MoveWindow
+	hidden                      bool
 }
 
 // newNativeEdit creates a hidden Win32 EDIT control as a child of parentHwnd.
+// No system border (wsBorder removed) — the framework draws its own border.
 func newNativeEdit(parentHwnd uintptr) *win32NativeEdit {
 	initNativeEditProcs()
 	initGDITextProcs() // ensure procCreateFontW is available
 
 	editClass, _ := syscall.UTF16PtrFromString("EDIT")
-	style := uintptr(wsChild | wsBorder | esAutoHScroll | wsTabStop)
+	// No wsBorder: framework's editTextPainter draws a custom rounded border.
+	style := uintptr(wsChild | esAutoHScroll | wsTabStop)
 
 	hInstance, _, _ := procGetModuleHandleW.Call(0)
 
@@ -88,12 +97,11 @@ func newNativeEdit(parentHwnd uintptr) *win32NativeEdit {
 		0, // lpParam
 	)
 
-	fmt.Printf("[NativeEdit] Created: hwnd=0x%X, parent=0x%X\n", hwnd, parentHwnd)
-
 	return &win32NativeEdit{
 		hwnd:       hwnd,
 		parentHwnd: parentHwnd,
 		style:      style,
+		lastX:      -1, lastY: -1,
 	}
 }
 
@@ -101,33 +109,114 @@ func newNativeEdit(parentHwnd uintptr) *win32NativeEdit {
 
 func (e *win32NativeEdit) AttachToNode(node *core.Node) {
 	e.node = node
-	b := node.Bounds()
+	// Store self on node so the painter can call UpdatePosition during Paint.
+	node.SetData("nativeEdit", e)
+	e.UpdatePosition()
+}
 
-	// Walk up the tree to compute the absolute position within the window.
-	absX, absY := b.X, b.Y
+func (e *win32NativeEdit) Detach() {
+	if e.node != nil {
+		e.node.SetData("nativeEdit", nil)
+	}
+	procShowWindow.Call(e.hwnd, SW_HIDE)
+	e.node = nil
+	e.hidden = true
+}
+
+// UpdatePosition recalculates the native EDIT control's position and size
+// based on the node's current layout bounds. It accounts for:
+// - Absolute position (walking parent bounds)
+// - ScrollView offsets (subtracting scroll position)
+// - Viewport clipping (hiding when scrolled out of view)
+// - Inset from node bounds (so framework border is visible)
+func (e *win32NativeEdit) UpdatePosition() {
+	if e.node == nil {
+		return
+	}
+	node := e.node
+	b := node.Bounds()
+	dpi := 1.0
+	if s, ok := node.GetData("dpiScale").(float64); ok && s > 0 {
+		dpi = s
+	}
+	inset := editInset * dpi
+
+	// Walk up parent chain: accumulate position, account for scroll offsets,
+	// and compute the visible clip rect from any ScrollView ancestor.
+	absX := b.X + inset
+	absY := b.Y + inset
+	clipValid := false
+	var clipX1, clipY1, clipX2, clipY2 float64
+
 	for n := node.Parent(); n != nil; n = n.Parent() {
 		nb := n.Bounds()
+
+		// Check for ScrollLayout and adjust for scroll offset
+		if sl, ok := n.GetLayout().(*layout.ScrollLayout); ok {
+			if sl.Direction == layout.Vertical {
+				absY -= sl.OffsetY
+			} else {
+				absX -= sl.OffsetX
+			}
+			// The ScrollView's viewport is the clip rect
+			scrollAbsX, scrollAbsY := nb.X, nb.Y
+			for p := n.Parent(); p != nil; p = p.Parent() {
+				pb := p.Bounds()
+				scrollAbsX += pb.X
+				scrollAbsY += pb.Y
+			}
+			clipX1 = scrollAbsX
+			clipY1 = scrollAbsY
+			clipX2 = scrollAbsX + nb.Width
+			clipY2 = scrollAbsY + nb.Height
+			clipValid = true
+		}
+
 		absX += nb.X
 		absY += nb.Y
 	}
 
-	fmt.Printf("[NativeEdit] AttachToNode: hwnd=0x%X, pos=(%d,%d), size=(%d,%d)\n",
-		e.hwnd, int(absX), int(absY), int(b.Width), int(b.Height))
+	w := b.Width - inset*2
+	h := b.Height - inset*2
+	if w < 1 {
+		w = 1
+	}
+	if h < 1 {
+		h = 1
+	}
 
-	procMoveWindow.Call(
-		e.hwnd,
-		uintptr(int(absX)),
-		uintptr(int(absY)),
-		uintptr(int(b.Width)),
-		uintptr(int(b.Height)),
-		1, // bRepaint
-	)
-	procShowWindow.Call(e.hwnd, SW_SHOW)
-}
+	ix, iy, iw, ih := int(absX), int(absY), int(w), int(h)
 
-func (e *win32NativeEdit) Detach() {
-	procShowWindow.Call(e.hwnd, SW_HIDE)
-	e.node = nil
+	// Viewport clipping: hide if outside the ScrollView viewport
+	if clipValid {
+		editRight := absX + w
+		editBottom := absY + h
+		if absX >= clipX2 || editRight <= clipX1 || absY >= clipY2 || editBottom <= clipY1 {
+			// Completely outside viewport
+			if !e.hidden {
+				procShowWindow.Call(e.hwnd, SW_HIDE)
+				e.hidden = true
+			}
+			return
+		}
+	}
+
+	// Show if was hidden
+	if e.hidden {
+		procShowWindow.Call(e.hwnd, SW_SHOW)
+		e.hidden = false
+	}
+
+	// Only call MoveWindow if position/size actually changed
+	if ix != e.lastX || iy != e.lastY || iw != e.lastW || ih != e.lastH {
+		procMoveWindow.Call(
+			e.hwnd,
+			uintptr(ix), uintptr(iy),
+			uintptr(iw), uintptr(ih),
+			1, // bRepaint
+		)
+		e.lastX, e.lastY, e.lastW, e.lastH = ix, iy, iw, ih
+	}
 }
 
 func (e *win32NativeEdit) GetText() string {
@@ -179,11 +268,11 @@ func (e *win32NativeEdit) SetFont(family string, size float64, weight int) {
 }
 
 func (e *win32NativeEdit) SetTextColor(_ interface{}) {
-	// Phase 2: requires WM_CTLCOLOREDIT handling in parent wndProc.
+	// Requires WM_CTLCOLOREDIT handling in parent wndProc.
 }
 
 func (e *win32NativeEdit) SetBackgroundColor(_ interface{}) {
-	// Phase 2: requires WM_CTLCOLOREDIT handling in parent wndProc.
+	// Requires WM_CTLCOLOREDIT handling in parent wndProc.
 }
 
 func (e *win32NativeEdit) SetMultiLine(multiLine bool) {
@@ -191,14 +280,12 @@ func (e *win32NativeEdit) SetMultiLine(multiLine bool) {
 		return
 	}
 	e.multiLine = multiLine
-	// Recreating the control is the simplest way to toggle ES_MULTILINE
-	// because that style cannot be changed after creation.
 	e.recreateControl()
 }
 
 func (e *win32NativeEdit) SetMaxLength(max int) {
 	if max <= 0 {
-		max = 0 // 0 = default limit (32 KB for single-line, 64 KB for multi-line)
+		max = 0 // 0 = default limit
 	}
 	procSendMessageW.Call(e.hwnd, emSetLimitText, uintptr(max), 0)
 }
@@ -224,7 +311,6 @@ func (e *win32NativeEdit) Focus() {
 }
 
 func (e *win32NativeEdit) ClearFocus() {
-	// Set focus back to the parent window.
 	procSetFocus.Call(e.parentHwnd)
 }
 
@@ -240,7 +326,6 @@ func (e *win32NativeEdit) recreateControl() {
 	// Determine position from the existing window.
 	var rc RECT
 	procGetWindowRect.Call(e.hwnd, uintptr(unsafe.Pointer(&rc)))
-	// Convert screen coords to parent-client coords.
 	pt := POINT{X: rc.Left, Y: rc.Top}
 	procScreenToClient.Call(e.parentHwnd, uintptr(unsafe.Pointer(&pt)))
 	width := rc.Right - rc.Left
@@ -249,11 +334,11 @@ func (e *win32NativeEdit) recreateControl() {
 	// Destroy old control.
 	procDestroyWindow.Call(e.hwnd)
 
-	// Build new style.
-	style := uintptr(wsChild | wsBorder | wsTabStop | esAutoHScroll)
+	// Build new style — no wsBorder (framework draws its own).
+	style := uintptr(wsChild | wsTabStop | esAutoHScroll)
 	if e.multiLine {
 		style |= esMultiLine | esAutoVScroll
-		style &^= esAutoHScroll // multiline typically wants word wrap
+		style &^= esAutoHScroll
 	}
 	switch e.inputType {
 	case platform.InputTypePassword:

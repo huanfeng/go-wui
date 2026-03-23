@@ -119,24 +119,37 @@ func (p *editTextPainter) Paint(node *core.Node, canvas core.Canvas) {
 		}
 	}
 
-	// Hint text (light gray) — only when there is no actual text.
-	text := node.GetDataString("text")
-	if text == "" {
-		hint := node.GetDataString("hint")
-		if hint != "" {
-			fontSize := 14.0
-			if s.FontSize > 0 {
-				fontSize = s.FontSize
+	// Hint text (light gray) — only when no native edit is attached and no text.
+	if node.GetData("nativeEdit") == nil {
+		text := node.GetDataString("text")
+		if text == "" {
+			hint := node.GetDataString("hint")
+			if hint != "" {
+				fontSize := 14.0
+				if s.FontSize > 0 {
+					fontSize = s.FontSize
+				}
+				hintPaint := &core.Paint{
+					Color:    color.RGBA{R: 180, G: 180, B: 180, A: 255},
+					FontSize: fontSize,
+				}
+				textSize := canvas.MeasureText(hint, hintPaint)
+				x := 8.0
+				y := (b.Height - textSize.Height) / 2
+				canvas.DrawText(hint, x, y, hintPaint)
 			}
-			hintPaint := &core.Paint{
-				Color:    color.RGBA{R: 180, G: 180, B: 180, A: 255},
-				FontSize: fontSize,
-			}
-			// Left-aligned, vertically centered.
-			textSize := canvas.MeasureText(hint, hintPaint)
-			x := 8.0 // left padding
-			y := (b.Height - textSize.Height) / 2
-			canvas.DrawText(hint, x, y, hintPaint)
 		}
 	}
+
+	// Update native EDIT control position/visibility every paint cycle.
+	// This keeps the native control in sync with layout changes, scrolling, resizing.
+	if ne, ok := node.GetData("nativeEdit").(nativeEditUpdater); ok {
+		ne.UpdatePosition()
+	}
+}
+
+// nativeEditUpdater is satisfied by platform NativeEditText implementations
+// that support dynamic position updates (e.g. win32NativeEdit).
+type nativeEditUpdater interface {
+	UpdatePosition()
 }
