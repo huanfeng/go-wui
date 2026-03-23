@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gowui/core"
+	"gowui/layout"
 )
 
 // RecyclerAdapter provides data and creates ViewHolders for RecyclerView.
@@ -71,7 +72,8 @@ type RecyclerView struct {
 	pool        *recyclerPool
 	scrollY     float64
 	itemHeight  float64 // fixed item height for simplicity
-	activeHolders map[int]*ViewHolder // position → holder
+	activeHolders map[int]*ViewHolder
+	scrollbar   Scrollbar // shared scrollbar component // position → holder
 
 	// Scroll tracking (reuses ScrollView patterns)
 	dragging  bool
@@ -95,6 +97,7 @@ func NewRecyclerView(itemHeight float64) *RecyclerView {
 		pool:          newRecyclerPool(),
 		itemHeight:    itemHeight,
 		activeHolders: make(map[int]*ViewHolder),
+		scrollbar:     Scrollbar{Orientation: layout.Vertical},
 		hoveredPos:    -1,
 		pressedPos:    -1,
 	}
@@ -217,6 +220,15 @@ func (rv *RecyclerView) stopFling() {
 	rv.flingAnim = nil
 }
 
+// rvScrollbarMetrics returns metrics for the shared Scrollbar component.
+func (rv *RecyclerView) rvScrollbarMetrics() ScrollbarMetrics {
+	b := rv.node.Bounds()
+	if b.Height == 0 {
+		b.Height = rv.node.MeasuredSize().Height
+	}
+	return rv.scrollbar.ComputeMetrics(b.Height, rv.totalContentHeight(), rv.scrollY)
+}
+
 // positionAtY returns the item position at the given y coordinate (global/window coords).
 func (rv *RecyclerView) positionAtY(globalY float64) int {
 	// Convert global coordinate to local (relative to RecyclerView)
@@ -335,38 +347,8 @@ func (p *recyclerViewPainter) Paint(node *core.Node, canvas core.Canvas) {
 func (p *recyclerViewPainter) paintScrollIndicator(node *core.Node, canvas core.Canvas) {
 	rv := p.rv
 	b := node.Bounds()
-	totalH := rv.totalContentHeight()
-	if totalH <= b.Height || totalH == 0 {
-		return
-	}
-
-	const indicatorWidth = 4.0
-	const indicatorMinLength = 20.0
-	const indicatorMargin = 2.0
-
-	ratio := b.Height / totalH
-	indicatorH := b.Height * ratio
-	if indicatorH < indicatorMinLength {
-		indicatorH = indicatorMinLength
-	}
-	scrollRange := totalH - b.Height
-	if scrollRange <= 0 {
-		return
-	}
-	scrollFraction := rv.scrollY / scrollRange
-	trackH := b.Height - indicatorH
-	indicatorY := trackH * scrollFraction
-
-	indicatorPaint := &core.Paint{
-		Color:     color.RGBA{R: 128, G: 128, B: 128, A: 100},
-		DrawStyle: core.PaintFill,
-	}
-	canvas.DrawRoundRect(core.Rect{
-		X:      b.Width - indicatorWidth - indicatorMargin,
-		Y:      indicatorY,
-		Width:  indicatorWidth,
-		Height: indicatorH,
-	}, indicatorWidth/2, indicatorPaint)
+	metrics := rv.rvScrollbarMetrics()
+	rv.scrollbar.Paint(canvas, core.Rect{Width: b.Width, Height: b.Height}, metrics)
 }
 
 // ---------- recyclerViewHandler ----------
@@ -403,7 +385,19 @@ func (h *recyclerViewHandler) OnEvent(node *core.Node, event core.Event) bool {
 	// Scroll wheel
 	if se, ok := event.(*core.ScrollEvent); ok {
 		rv.scrollY -= se.DeltaY * rvScrollWheelStep
+		rv.scrollbar.ClearHover()
 		rv.clampScroll()
+		node.MarkDirty()
+		return true
+	}
+
+	// Delegate scrollbar interaction first (before list item handling)
+	metrics := rv.rvScrollbarMetrics()
+	if consumed, newOffset := rv.scrollbar.HandleEvent(node, event, metrics, rv.scrollY); consumed {
+		if rv.scrollbar.Dragging || newOffset != rv.scrollY {
+			rv.scrollY = newOffset
+			rv.clampScroll()
+		}
 		node.MarkDirty()
 		return true
 	}
@@ -479,6 +473,7 @@ func (h *recyclerViewHandler) OnEvent(node *core.Node, event core.Event) bool {
 	case core.ActionHoverExit, core.ActionCancel:
 		rv.hoveredPos = -1
 		rv.pressedPos = -1
+		rv.scrollbar.ClearHover()
 		rv.dragging = false
 		node.MarkDirty()
 		return true

@@ -8,10 +8,18 @@ package core
 //
 // hitPoint is in the coordinate space of the root node.
 func DispatchEvent(root *Node, event Event, hitPoint Point) bool {
+	_, consumed := DispatchEventCapture(root, event, hitPoint)
+	return consumed
+}
+
+// DispatchEventCapture dispatches an event and returns the node that consumed it.
+// Returns (nil, false) if no node consumed the event.
+// Used by pointer capture to identify the correct drag target.
+func DispatchEventCapture(root *Node, event Event, hitPoint Point) (*Node, bool) {
 	// Phase 1: Build hit chain — root -> ... -> deepest hit node
 	chain := buildHitChain(root, hitPoint, Point{})
 	if len(chain) == 0 {
-		return false
+		return nil, false
 	}
 
 	// Phase 2: Intercept (from root to parent of target)
@@ -19,7 +27,6 @@ func DispatchEvent(root *Node, event Event, hitPoint Point) bool {
 		node := chain[i]
 		if h := node.GetHandler(); h != nil {
 			if h.OnInterceptEvent(node, event) {
-				// Intercepted — this node becomes the target
 				chain = chain[:i+1]
 				break
 			}
@@ -31,11 +38,11 @@ func DispatchEvent(root *Node, event Event, hitPoint Point) bool {
 		node := chain[i]
 		if h := node.GetHandler(); h != nil {
 			if h.OnEvent(node, event) {
-				return true // consumed
+				return node, true
 			}
 		}
 	}
-	return false
+	return nil, false
 }
 
 // HitTest returns the deepest visible node that contains the given point.

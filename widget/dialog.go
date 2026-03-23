@@ -261,9 +261,9 @@ func (p *dialogOverlayPainter) Paint(node *core.Node, canvas core.Canvas) {
 	}
 
 	s := d.node.GetStyle()
-	fontSize := 14.0 * dpi
+	fontSize := 14.0 * dpi // fallback (constant, needs manual scaling)
 	if s != nil && s.FontSize > 0 {
-		fontSize = s.FontSize * dpi
+		fontSize = s.FontSize // already DPI-scaled by AddChild
 	}
 	titleFontSize := fontSize * 1.3
 
@@ -365,9 +365,9 @@ func (p *dialogPainter) Paint(node *core.Node, canvas core.Canvas) {
 	}
 	canvas.DrawRoundRect(core.Rect{Width: b.Width, Height: b.Height}, cr, borderPaint)
 
-	fontSize := 14.0 * dpi
+	fontSize := 14.0 * dpi // fallback
 	if s.FontSize > 0 {
-		fontSize = s.FontSize * dpi
+		fontSize = s.FontSize // already DPI-scaled
 	}
 	titleFontSize := fontSize * 1.3
 	textColor := s.TextColor
@@ -448,9 +448,9 @@ func (h *dialogHandler) hitTestButton(node *core.Node, x, y float64) int {
 	b := d.node.Bounds()
 	s := d.node.GetStyle()
 	dpi := getDPIScale(d.node)
-	fontSize := 14.0 * dpi
+	fontSize := 14.0 * dpi // fallback
 	if s != nil && s.FontSize > 0 {
-		fontSize = s.FontSize * dpi
+		fontSize = s.FontSize // already DPI-scaled
 	}
 
 	// Convert global coordinates to local (relative to dialog node)

@@ -77,6 +77,8 @@ func (n *Node) Tag() string {
 }
 
 // AddChild appends a child node and sets its parent.
+// If the tree has a dpiScale set, the new child subtree is automatically
+// DPI-scaled to match (prevents the need for manual scaling of dynamic nodes).
 func (n *Node) AddChild(child *Node) {
 	if child == nil {
 		return
@@ -88,6 +90,24 @@ func (n *Node) AddChild(child *Node) {
 	child.parent = n
 	n.children = append(n.children, child)
 	n.MarkDirty()
+
+	// Auto-DPI-scale: if any ancestor has dpiScale set and this child
+	// hasn't been scaled yet, scale it now.
+	if child.GetData("dpiScaled") == nil {
+		if s, ok := n.findDPIScale(); ok && s != 0 {
+			ScaleNodeDPI(child, s)
+		}
+	}
+}
+
+// findDPIScale walks up the parent chain to find a dpiScale value.
+func (n *Node) findDPIScale() (float64, bool) {
+	for node := n; node != nil; node = node.parent {
+		if s, ok := node.GetData("dpiScale").(float64); ok && s > 0 {
+			return s, true
+		}
+	}
+	return 0, false
 }
 
 // RemoveChild removes a child node and clears its parent reference.
@@ -300,6 +320,76 @@ func (n *Node) IsChildDirty() bool {
 func (n *Node) ClearDirty() {
 	n.dirty = false
 	n.childDirty = false
+}
+
+// ---------- DPI Scaling ----------
+
+// ScaleNodeDPI recursively scales dp values (padding, margin, font size,
+// dimensions, spacing) in the subtree by the given DPI scale factor.
+// Each node is marked to prevent double-scaling.
+func ScaleNodeDPI(node *Node, scale float64) {
+	if node.GetData("dpiScaled") != nil {
+		return // already scaled
+	}
+	node.SetData("dpiScale", scale)
+	node.SetData("dpiScaled", true)
+
+	if scale == 1.0 {
+		// Still mark dpiScale so children can find it, but skip actual scaling
+		for _, child := range node.Children() {
+			ScaleNodeDPI(child, scale)
+		}
+		return
+	}
+
+	// Scale padding
+	p := node.Padding()
+	node.SetPadding(Insets{
+		Left:   p.Left * scale,
+		Top:    p.Top * scale,
+		Right:  p.Right * scale,
+		Bottom: p.Bottom * scale,
+	})
+
+	// Scale margin
+	m := node.Margin()
+	node.SetMargin(Insets{
+		Left:   m.Left * scale,
+		Top:    m.Top * scale,
+		Right:  m.Right * scale,
+		Bottom: m.Bottom * scale,
+	})
+
+	// Scale style dimensions
+	if s := node.GetStyle(); s != nil {
+		if s.FontSize > 0 {
+			s.FontSize *= scale
+		}
+		if s.CornerRadius > 0 {
+			s.CornerRadius *= scale
+		}
+		if s.BorderWidth > 0 {
+			s.BorderWidth *= scale
+		}
+		if s.Width.Unit == DimensionDp && s.Width.Value > 0 {
+			s.Width.Value *= scale
+		}
+		if s.Height.Unit == DimensionDp && s.Height.Value > 0 {
+			s.Height.Value *= scale
+		}
+	}
+
+	// Scale layout spacing via DPIScalable interface
+	if l := node.GetLayout(); l != nil {
+		if ds, ok := l.(DPIScalable); ok {
+			ds.ScaleDPI(scale)
+		}
+	}
+
+	// Recurse children
+	for _, child := range node.Children() {
+		ScaleNodeDPI(child, scale)
+	}
 }
 
 // ---------- Position ----------

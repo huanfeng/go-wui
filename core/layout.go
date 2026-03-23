@@ -20,3 +20,9 @@ type Layout interface {
 	Measure(node *Node, widthSpec, heightSpec MeasureSpec) Size
 	Arrange(node *Node, bounds Rect)
 }
+
+// DPIScalable is optionally implemented by Layout types that hold
+// dp-valued fields (spacing, etc.) which need DPI scaling.
+type DPIScalable interface {
+	ScaleDPI(scale float64)
+}

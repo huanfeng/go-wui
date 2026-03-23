@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"image/color"
 	"math"
 	"time"
 
@@ -19,11 +18,12 @@ const dragThreshold = 8.0
 const flingVelocityThreshold = 0.3
 
 // ScrollView is a scrollable container that holds a single child.
-// It supports vertical or horizontal scrolling with drag, fling, and
-// mouse wheel input.
+// It supports vertical or horizontal scrolling with drag, fling,
+// mouse wheel input, and interactive scrollbar.
 type ScrollView struct {
 	BaseView
 	scrollLayout *layout.ScrollLayout
+	scrollbar    Scrollbar // shared scrollbar component
 
 	// Touch/mouse scroll tracking
 	dragging  bool
@@ -40,6 +40,7 @@ type ScrollView struct {
 func NewScrollView() *ScrollView {
 	sv := &ScrollView{}
 	sv.scrollLayout = &layout.ScrollLayout{Direction: layout.Vertical}
+	sv.scrollbar = Scrollbar{Orientation: layout.Vertical}
 	sv.node = initNode("ScrollView", sv)
 	sv.node.SetLayout(sv.scrollLayout)
 	sv.node.SetPainter(&scrollViewPainter{sv: sv})
@@ -53,6 +54,7 @@ func NewScrollView() *ScrollView {
 func NewHorizontalScrollView() *ScrollView {
 	sv := &ScrollView{}
 	sv.scrollLayout = &layout.ScrollLayout{Direction: layout.Horizontal}
+	sv.scrollbar = Scrollbar{Orientation: layout.Horizontal}
 	sv.node = initNode("HorizontalScrollView", sv)
 	sv.node.SetLayout(sv.scrollLayout)
 	sv.node.SetPainter(&scrollViewPainter{sv: sv})
@@ -196,12 +198,34 @@ func (h *scrollViewHandler) OnEvent(node *core.Node, event core.Event) bool {
 		} else {
 			sv.scrollLayout.OffsetX -= se.DeltaX * scrollWheelStep
 		}
+		sv.scrollbar.ClearHover()
 		sv.clampScroll()
 		node.MarkDirty()
 		return true
 	}
 
-	// Handle motion events for drag scrolling
+	// Delegate scrollbar interaction to the shared Scrollbar component
+	metrics := sv.scrollbarMetrics()
+	var currentOffset float64
+	if sv.scrollLayout.Direction == layout.Vertical {
+		currentOffset = sv.scrollLayout.OffsetY
+	} else {
+		currentOffset = sv.scrollLayout.OffsetX
+	}
+	if consumed, newOffset := sv.scrollbar.HandleEvent(node, event, metrics, currentOffset); consumed {
+		if sv.scrollbar.Dragging || newOffset != currentOffset {
+			if sv.scrollLayout.Direction == layout.Vertical {
+				sv.scrollLayout.OffsetY = newOffset
+			} else {
+				sv.scrollLayout.OffsetX = newOffset
+			}
+			sv.clampScroll()
+		}
+		node.MarkDirty()
+		return true
+	}
+
+	// Handle motion events for content drag scrolling
 	me, ok := event.(*core.MotionEvent)
 	if !ok {
 		return false
@@ -221,7 +245,6 @@ func (h *scrollViewHandler) OnEvent(node *core.Node, event core.Event) bool {
 
 	case core.ActionMove:
 		if !sv.dragging {
-			// Check if drag threshold exceeded
 			if sv.scrollLayout.Direction == layout.Vertical {
 				if math.Abs(me.Y-sv.startY) > dragThreshold {
 					sv.dragging = true
@@ -234,15 +257,14 @@ func (h *scrollViewHandler) OnEvent(node *core.Node, event core.Event) bool {
 		}
 		if sv.dragging {
 			now := time.Now()
-			dt := now.Sub(sv.lastTime).Seconds() * 1000 // milliseconds
+			dt := now.Sub(sv.lastTime).Seconds() * 1000
 			if dt < 1 {
 				dt = 1
 			}
-
 			if sv.scrollLayout.Direction == layout.Vertical {
 				delta := sv.lastDragY - me.Y
 				sv.scrollLayout.OffsetY += delta
-				sv.velocity = delta / dt // px per ms
+				sv.velocity = delta / dt
 				sv.lastDragY = me.Y
 			} else {
 				delta := sv.lastDragX - me.X
@@ -259,17 +281,22 @@ func (h *scrollViewHandler) OnEvent(node *core.Node, event core.Event) bool {
 	case core.ActionUp:
 		if sv.dragging {
 			sv.dragging = false
-			// Start fling if velocity is significant
 			if math.Abs(sv.velocity) > flingVelocityThreshold {
-				// velocity is px/ms, multiply by duration for total distance
-				sv.startFling(sv.velocity * 1000) // convert to px/s scale
+				sv.startFling(sv.velocity * 1000)
 			}
 			return true
 		}
 
+	case core.ActionHoverExit:
+		sv.scrollbar.ClearHover()
+		node.MarkDirty()
+		return true
+
 	case core.ActionCancel:
 		sv.dragging = false
 		sv.velocity = 0
+		sv.scrollbar.ClearHover()
+		node.MarkDirty()
 		return true
 	}
 
@@ -359,66 +386,20 @@ func paintNodeRecursive(node *core.Node, canvas core.Canvas) {
 	canvas.Restore()
 }
 
-// paintScrollIndicator draws a thin scrollbar indicator on the right (vertical)
-// or bottom (horizontal) edge of the viewport.
+// scrollbarMetrics returns metrics for the shared Scrollbar component.
+func (sv *ScrollView) scrollbarMetrics() ScrollbarMetrics {
+	b := sv.node.Bounds()
+	childSize := sv.scrollLayout.ChildSize()
+	if sv.scrollLayout.Direction == layout.Vertical {
+		return sv.scrollbar.ComputeMetrics(b.Height, childSize.Height, sv.scrollLayout.OffsetY)
+	}
+	return sv.scrollbar.ComputeMetrics(b.Width, childSize.Width, sv.scrollLayout.OffsetX)
+}
+
+// paintScrollIndicator delegates to the shared Scrollbar component.
 func (p *scrollViewPainter) paintScrollIndicator(node *core.Node, canvas core.Canvas) {
 	sv := p.sv
 	b := node.Bounds()
-	childSize := sv.scrollLayout.ChildSize()
-
-	indicatorColor := color.RGBA{R: 128, G: 128, B: 128, A: 100}
-	indicatorPaint := &core.Paint{Color: indicatorColor, DrawStyle: core.PaintFill}
-
-	const indicatorWidth = 4.0
-	const indicatorMinLength = 20.0
-	const indicatorMargin = 2.0
-
-	if sv.scrollLayout.Direction == layout.Vertical {
-		if childSize.Height <= b.Height || childSize.Height == 0 {
-			return // No scrolling needed
-		}
-		// Calculate indicator position and size
-		ratio := b.Height / childSize.Height
-		indicatorH := b.Height * ratio
-		if indicatorH < indicatorMinLength {
-			indicatorH = indicatorMinLength
-		}
-		scrollRange := childSize.Height - b.Height
-		if scrollRange <= 0 {
-			return
-		}
-		scrollFraction := sv.scrollLayout.OffsetY / scrollRange
-		trackH := b.Height - indicatorH
-		indicatorY := trackH * scrollFraction
-
-		canvas.DrawRoundRect(core.Rect{
-			X:      b.Width - indicatorWidth - indicatorMargin,
-			Y:      indicatorY,
-			Width:  indicatorWidth,
-			Height: indicatorH,
-		}, indicatorWidth/2, indicatorPaint)
-	} else {
-		if childSize.Width <= b.Width || childSize.Width == 0 {
-			return
-		}
-		ratio := b.Width / childSize.Width
-		indicatorW := b.Width * ratio
-		if indicatorW < indicatorMinLength {
-			indicatorW = indicatorMinLength
-		}
-		scrollRange := childSize.Width - b.Width
-		if scrollRange <= 0 {
-			return
-		}
-		scrollFraction := sv.scrollLayout.OffsetX / scrollRange
-		trackW := b.Width - indicatorW
-		indicatorX := trackW * scrollFraction
-
-		canvas.DrawRoundRect(core.Rect{
-			X:      indicatorX,
-			Y:      b.Height - indicatorWidth - indicatorMargin,
-			Width:  indicatorW,
-			Height: indicatorWidth,
-		}, indicatorWidth/2, indicatorPaint)
-	}
+	metrics := sv.scrollbarMetrics()
+	sv.scrollbar.Paint(canvas, core.Rect{Width: b.Width, Height: b.Height}, metrics)
 }

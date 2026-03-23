@@ -175,9 +175,9 @@ func (pm *PopupMenu) SetOnDismissListener(fn func()) {
 func (pm *PopupMenu) menuWidth() float64 {
 	dpi := getDPIScale(pm.node)
 	s := pm.node.GetStyle()
-	fontSize := 14.0 * dpi
+	fontSize := 14.0 * dpi // fallback
 	if s != nil && s.FontSize > 0 {
-		fontSize = s.FontSize * dpi
+		fontSize = s.FontSize // already DPI-scaled
 	}
 	charWidth := fontSize * 0.6
 	maxW := menuMinWidth * dpi
@@ -308,9 +308,9 @@ func (p *popupMenuPainter) Paint(node *core.Node, canvas core.Canvas) {
 	canvas.DrawRoundRect(core.Rect{Width: b.Width, Height: b.Height}, cr, borderPaint)
 
 	// Draw items
-	fontSize := 14.0 * dpi
+	fontSize := 14.0 * dpi // fallback
 	if s.FontSize > 0 {
-		fontSize = s.FontSize * dpi
+		fontSize = s.FontSize // already DPI-scaled
 	}
 	for i, item := range pm.menu.items {
 		itemY := float64(i) * itemH

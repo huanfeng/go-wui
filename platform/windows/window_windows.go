@@ -34,6 +34,7 @@ const (
 	WM_RBUTTONDOWN = 0x0204
 	WM_RBUTTONUP   = 0x0205
 	WM_MOUSEWHEEL  = 0x020A
+	WM_DPICHANGED  = 0x02E0
 	WM_USER        = 0x0400
 	WM_APP_PAINT   = WM_USER + 1
 
@@ -195,7 +196,8 @@ type win32Window struct {
 	dpiScale     float64 // DPI scale factor (1.0 at 96 DPI, 1.5 at 144 DPI)
 	dpiScaled    bool    // true after node tree has been DPI-scaled
 
-	lastHoverNode *core.Node // tracks which node the mouse is over for HoverEnter/Exit
+	lastHoverNode   *core.Node // tracks which node the mouse is over for HoverEnter/Exit
+	capturedNode    *core.Node // pointer capture: receives all Move/Up events after ActionDown
 
 	onClose        func() bool
 	onResize       func(w, h int)
@@ -347,6 +349,33 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		procPostQuitMessage.Call(0)
 		return 0
 
+	case WM_DPICHANGED:
+		// wParam: LOWORD = new X DPI, HIWORD = new Y DPI
+		newDPI := float64(int16(wParam & 0xFFFF))
+		newScale := newDPI / 96.0
+		if newScale > 0 && newScale != w.dpiScale {
+			oldScale := w.dpiScale
+			w.dpiScale = newScale
+			// Re-scale the node tree by the ratio of new/old DPI
+			if w.contentView != nil && oldScale > 0 {
+				ratio := newScale / oldScale
+				rescaleNodeTree(w.contentView, ratio)
+			}
+			// lParam points to a RECT with the suggested new window position/size
+			if lParam != 0 {
+				suggestedRect := (*RECT)(unsafe.Pointer(lParam))
+				procSetWindowPos.Call(hwnd, 0,
+					uintptr(suggestedRect.Left), uintptr(suggestedRect.Top),
+					uintptr(suggestedRect.Right-suggestedRect.Left),
+					uintptr(suggestedRect.Bottom-suggestedRect.Top),
+					SWP_NOZORDER)
+			}
+			if w.onDPIChanged != nil {
+				w.onDPIChanged(newDPI)
+			}
+		}
+		return 0
+
 	case WM_SIZE:
 		width := int(lParam & 0xFFFF)
 		height := int((lParam >> 16) & 0xFFFF)
@@ -428,31 +457,59 @@ func (w *win32Window) dispatchMotion(action core.MotionAction, x, y float64, but
 		return
 	}
 
-	// Hover tracking: send HoverEnter/HoverExit when the deepest hit node changes
+	// Hover tracking: send HoverEnter/HoverExit when the deepest hit node changes.
+	// HoverExit bubbles UP to all ancestors so parent containers (ScrollView etc.)
+	// can clear their hover state when the mouse leaves their bounds.
 	if action == core.ActionHoverMove {
 		hitPoint := core.Point{X: x, Y: y}
 		currentTarget := core.HitTest(w.contentView, hitPoint)
 		if currentTarget != w.lastHoverNode {
-			// Send HoverExit to old target
+			needRepaint := false
+			// Send HoverExit to old target AND its ancestors
 			if w.lastHoverNode != nil {
 				exitEvt := core.NewMotionEvent(core.ActionHoverExit, x, y)
-				if h := w.lastHoverNode.GetHandler(); h != nil {
-					if h.OnEvent(w.lastHoverNode, exitEvt) {
-						w.Invalidate()
+				for node := w.lastHoverNode; node != nil; node = node.Parent() {
+					if h := node.GetHandler(); h != nil {
+						if h.OnEvent(node, exitEvt) {
+							needRepaint = true
+						}
 					}
 				}
 			}
-			// Send HoverEnter to new target
+			// Send HoverEnter to new target only (not ancestors)
 			if currentTarget != nil {
 				enterEvt := core.NewMotionEvent(core.ActionHoverEnter, x, y)
 				if h := currentTarget.GetHandler(); h != nil {
 					if h.OnEvent(currentTarget, enterEvt) {
-						w.Invalidate()
+						needRepaint = true
 					}
 				}
 			}
 			w.lastHoverNode = currentTarget
+			if needRepaint {
+				w.Invalidate()
+			}
 		}
+	}
+
+	// Pointer capture: after ActionDown, subsequent Move/Up go to the node
+	// that consumed ActionDown, so drag works even outside the original view.
+	if (action == core.ActionMove || action == core.ActionUp) && w.capturedNode != nil {
+		evt := core.NewMotionEvent(action, x, y)
+		evt.Button = button
+		evt.RawX = x
+		evt.RawY = y
+		consumed := false
+		if h := w.capturedNode.GetHandler(); h != nil {
+			consumed = h.OnEvent(w.capturedNode, evt)
+		}
+		if action == core.ActionUp {
+			w.capturedNode = nil
+		}
+		if consumed {
+			w.Invalidate()
+		}
+		return
 	}
 
 	evt := core.NewMotionEvent(action, x, y)
@@ -460,10 +517,19 @@ func (w *win32Window) dispatchMotion(action core.MotionAction, x, y float64, but
 	evt.RawX = x
 	evt.RawY = y
 
-	// Use core.DispatchEvent for proper hit-testing and event bubbling
-	consumed := core.DispatchEvent(w.contentView, evt, core.Point{X: x, Y: y})
-	if consumed {
-		w.Invalidate() // repaint after state change
+	// Dispatch through the normal 3-phase event system.
+	// For ActionDown, capture the consuming node for subsequent Move/Up.
+	if action == core.ActionDown {
+		consumer, consumed := core.DispatchEventCapture(w.contentView, evt, core.Point{X: x, Y: y})
+		w.capturedNode = consumer
+		if consumed {
+			w.Invalidate()
+		}
+	} else {
+		consumed := core.DispatchEvent(w.contentView, evt, core.Point{X: x, Y: y})
+		if consumed {
+			w.Invalidate()
+		}
 	}
 }
 
@@ -633,9 +699,11 @@ func (w *win32Window) render() {
 		w.dpiScale = 1.0
 	}
 
-	// Scale dp values in the node tree to physical pixels (once)
+	// Scale dp values in the node tree to physical pixels (once).
+	// Uses core.ScaleNodeDPI which marks nodes as scaled, so dynamically
+	// added children via AddChild will also be auto-scaled.
 	if !w.dpiScaled {
-		scaleNodeTreeDPI(contentView, w.dpiScale)
+		core.ScaleNodeDPI(contentView, w.dpiScale)
 		w.dpiScaled = true
 	}
 
@@ -664,62 +732,57 @@ func (w *win32Window) render() {
 	w.present(canvas.Target())
 }
 
-// scaleNodeTreeDPI recursively scales dp values (padding, font size, spacing)
-// by the DPI scale factor. This converts dp → physical pixels for rendering.
-func scaleNodeTreeDPI(node *core.Node, scale float64) {
-	// Store the DPI scale factor so widget painters can read it.
-	node.SetData("dpiScale", scale)
-
-	if scale == 1.0 {
-		return // No scaling needed at 96 DPI
+// rescaleNodeTree re-scales all nodes by a ratio (newDPI/oldDPI) when the
+// display DPI changes at runtime. It resets the dpiScaled flag and applies
+// the ratio to all dp-valued fields.
+func rescaleNodeTree(node *core.Node, ratio float64) {
+	// Update stored dpiScale
+	if s, ok := node.GetData("dpiScale").(float64); ok {
+		node.SetData("dpiScale", s*ratio)
 	}
 
 	// Scale padding
 	p := node.Padding()
 	node.SetPadding(core.Insets{
-		Left:   p.Left * scale,
-		Top:    p.Top * scale,
-		Right:  p.Right * scale,
-		Bottom: p.Bottom * scale,
+		Left: p.Left * ratio, Top: p.Top * ratio,
+		Right: p.Right * ratio, Bottom: p.Bottom * ratio,
 	})
 
 	// Scale margin
 	m := node.Margin()
 	node.SetMargin(core.Insets{
-		Left:   m.Left * scale,
-		Top:    m.Top * scale,
-		Right:  m.Right * scale,
-		Bottom: m.Bottom * scale,
+		Left: m.Left * ratio, Top: m.Top * ratio,
+		Right: m.Right * ratio, Bottom: m.Bottom * ratio,
 	})
 
-	// Scale style dimensions
+	// Scale style (already in physical px from previous scaling, multiply by ratio)
 	if s := node.GetStyle(); s != nil {
 		if s.FontSize > 0 {
-			s.FontSize *= scale
+			s.FontSize *= ratio
 		}
 		if s.CornerRadius > 0 {
-			s.CornerRadius *= scale
+			s.CornerRadius *= ratio
 		}
 		if s.BorderWidth > 0 {
-			s.BorderWidth *= scale
+			s.BorderWidth *= ratio
 		}
-		// Scale fixed dp dimensions
 		if s.Width.Unit == core.DimensionDp && s.Width.Value > 0 {
-			s.Width.Value *= scale
+			s.Width.Value *= ratio
 		}
 		if s.Height.Unit == core.DimensionDp && s.Height.Value > 0 {
-			s.Height.Value *= scale
+			s.Height.Value *= ratio
 		}
 	}
 
-	// Scale LinearLayout spacing
-	if ll, ok := node.GetLayout().(*layout.LinearLayout); ok {
-		ll.Spacing *= scale
+	// Scale layout spacing
+	if l := node.GetLayout(); l != nil {
+		if ds, ok := l.(core.DPIScalable); ok {
+			ds.ScaleDPI(ratio)
+		}
 	}
 
-	// Recurse children
 	for _, child := range node.Children() {
-		scaleNodeTreeDPI(child, scale)
+		rescaleNodeTree(child, ratio)
 	}
 }
 

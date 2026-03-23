@@ -19,6 +19,11 @@ type LinearLayout struct {
 	Gravity     core.Gravity // cross-axis alignment for children
 }
 
+// ScaleDPI scales dp-valued fields by the DPI factor.
+func (ll *LinearLayout) ScaleDPI(scale float64) {
+	ll.Spacing *= scale
+}
+
 // Measure computes the desired size of the node and all its visible children.
 func (ll *LinearLayout) Measure(node *core.Node, widthSpec, heightSpec core.MeasureSpec) core.Size {
 	if ll.Orientation == Horizontal {
