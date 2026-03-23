@@ -144,33 +144,26 @@ func (e *win32NativeEdit) UpdatePosition() {
 	}
 	inset := editInset * dpi
 
-	// Walk up parent chain: accumulate position, account for scroll offsets,
-	// and compute the visible clip rect from any ScrollView ancestor.
+	// Walk up parent chain: accumulate absolute position and compute
+	// the visible clip rect from any ScrollView ancestor.
+	// NOTE: Do NOT subtract scroll offset here — ScrollLayout.Arrange already
+	// applies the offset to child bounds (Y = padding - OffsetY).
 	absX := b.X + inset
 	absY := b.Y + inset
 	clipValid := false
-	var clipX1, clipY1, clipX2, clipY2 float64
+	var clipY1, clipY2 float64
 
 	for n := node.Parent(); n != nil; n = n.Parent() {
 		nb := n.Bounds()
 
-		// Check for ScrollLayout and adjust for scroll offset
-		if sl, ok := n.GetLayout().(*layout.ScrollLayout); ok {
-			if sl.Direction == layout.Vertical {
-				absY -= sl.OffsetY
-			} else {
-				absX -= sl.OffsetX
-			}
-			// The ScrollView's viewport is the clip rect
-			scrollAbsX, scrollAbsY := nb.X, nb.Y
+		// If this ancestor is a ScrollView, compute its viewport as the clip rect.
+		// Native controls outside this rect will be hidden.
+		if _, ok := n.GetLayout().(*layout.ScrollLayout); ok {
+			scrollAbsY := nb.Y
 			for p := n.Parent(); p != nil; p = p.Parent() {
-				pb := p.Bounds()
-				scrollAbsX += pb.X
-				scrollAbsY += pb.Y
+				scrollAbsY += p.Bounds().Y
 			}
-			clipX1 = scrollAbsX
 			clipY1 = scrollAbsY
-			clipX2 = scrollAbsX + nb.Width
 			clipY2 = scrollAbsY + nb.Height
 			clipValid = true
 		}
@@ -200,12 +193,11 @@ func (e *win32NativeEdit) UpdatePosition() {
 
 	ix, iy, iw, ih := int(absX), int(absY), int(w), int(h)
 
-	// Viewport clipping: hide if outside the ScrollView viewport
+	// Viewport clipping: native controls can't be partially clipped,
+	// so hide when any part extends outside the ScrollView viewport.
 	if clipValid {
-		editRight := absX + w
 		editBottom := absY + h
-		if absX >= clipX2 || editRight <= clipX1 || absY >= clipY2 || editBottom <= clipY1 {
-			// Completely outside viewport
+		if absY < clipY1 || editBottom > clipY2 {
 			if !e.hidden {
 				procShowWindow.Call(e.hwnd, SW_HIDE)
 				e.hidden = true
