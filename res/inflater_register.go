@@ -29,6 +29,14 @@ func RegisterBuiltinViews(li *LayoutInflater) {
 	li.RegisterView("TabLayout", inflateTabLayout)
 	li.RegisterView("ViewPager", inflateViewPager)
 	li.RegisterView("RecyclerView", inflateRecyclerView)
+
+	// Phase 4 — Advanced Controls
+	li.RegisterView("GridLayout", inflateGridLayout)
+	li.RegisterView("FlexLayout", inflateFlexLayout)
+	li.RegisterView("Spinner", inflateSpinner)
+	li.RegisterView("SeekBar", inflateSeekBar)
+	li.RegisterView("TreeView", inflateTreeView)
+	li.RegisterView("SplitPane", inflateSplitPane)
 }
 
 func inflateLinearLayout(attrs *AttributeSet) *core.Node {
@@ -283,6 +291,74 @@ func inflateRecyclerView(attrs *AttributeSet) *core.Node {
 	rv := widget.NewRecyclerView(h)
 	applyCommonAttrs(rv.Node(), attrs)
 	return rv.Node()
+}
+
+func inflateGridLayout(attrs *AttributeSet) *core.Node {
+	n := core.NewNode("GridLayout")
+	n.SetStyle(&core.Style{})
+	cols := 2
+	if c := attrs.GetInt("columnCount"); c > 0 {
+		cols = c
+	}
+	spacing := attrs.GetDimension("spacing")
+	gl := &layout.GridLayout{ColumnCount: cols, Spacing: spacing.Value}
+	n.SetLayout(gl)
+	n.SetPainter(&containerPainter{})
+	applyCommonAttrs(n, attrs)
+	return n
+}
+
+func inflateFlexLayout(attrs *AttributeSet) *core.Node {
+	n := core.NewNode("FlexLayout")
+	n.SetStyle(&core.Style{})
+	orientation := layout.Horizontal
+	if attrs.GetString("orientation") == "vertical" {
+		orientation = layout.Vertical
+	}
+	fl := &layout.FlexLayout{
+		Orientation: orientation,
+		Spacing:     attrs.GetDimension("spacing").Value,
+	}
+	if attrs.GetString("wrap") == "true" {
+		fl.Wrap = layout.FlexWrapOn
+	}
+	n.SetLayout(fl)
+	n.SetPainter(&containerPainter{})
+	applyCommonAttrs(n, attrs)
+	return n
+}
+
+func inflateSpinner(attrs *AttributeSet) *core.Node {
+	sp := widget.NewSpinner(nil)
+	applyCommonAttrs(sp.Node(), attrs)
+	return sp.Node()
+}
+
+func inflateSeekBar(attrs *AttributeSet) *core.Node {
+	progress := attrs.GetFloat("progress")
+	sb := widget.NewSeekBar(progress)
+	applyCommonAttrs(sb.Node(), attrs)
+	return sb.Node()
+}
+
+func inflateTreeView(attrs *AttributeSet) *core.Node {
+	tv := widget.NewTreeView()
+	applyCommonAttrs(tv.Node(), attrs)
+	return tv.Node()
+}
+
+func inflateSplitPane(attrs *AttributeSet) *core.Node {
+	orientation := layout.Horizontal
+	if attrs.GetString("orientation") == "vertical" {
+		orientation = layout.Vertical
+	}
+	ratio := 0.5
+	if r := attrs.GetFloat("ratio"); r > 0 {
+		ratio = r
+	}
+	sp := widget.NewSplitPane(orientation, ratio)
+	applyCommonAttrs(sp.Node(), attrs)
+	return sp.Node()
 }
 
 // containerPainter is a simple painter for layout containers that draws
