@@ -1,6 +1,7 @@
 package windows
 
 import (
+	"fmt"
 	"image"
 	"runtime"
 	"sync"
@@ -731,6 +732,8 @@ func (w *win32Window) render() {
 		w.cachedImage.Bounds().Dy() == height {
 		canvas = gg.NewGGCanvasForImage(w.cachedImage, w.textRenderer)
 	} else {
+		fmt.Printf("[GoWUI] canvas resized: %dx%d (%.1f MB RGBA)\n",
+			width, height, float64(width*height*4)/(1024*1024))
 		canvas = gg.NewGGCanvas(width, height, w.textRenderer)
 		w.cachedImage = canvas.Target()
 	}
@@ -851,6 +854,8 @@ func (w *win32Window) present(img *image.RGBA) {
 
 	// Ensure cached DIB section matches the current dimensions.
 	if w.dibWidth != width || w.dibHeight != height {
+		fmt.Printf("[GoWUI] DIB resized: %dx%d (%.1f MB BGRA)\n",
+			width, height, float64(width*height*4)/(1024*1024))
 		w.releaseCachedDIB()
 
 		memDC, _, _ := procCreateCompatibleDC.Call(hdc)

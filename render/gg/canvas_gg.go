@@ -29,7 +29,9 @@ type GGCanvas struct {
 	txStack []point2
 	tx, ty  float64 // accumulated translate offset
 
-	// Manual clip tracking for DrawText/DrawImage (they bypass gg's clip).
+	// Manual clip tracking — mirrors gg's clip for fast early-out checks.
+	// gg's Clip() provides pixel-perfect clipping; this rect lets us skip
+	// draws that are entirely outside the clip without invoking gg at all.
 	clip      clipRect
 	clipStack []clipRect
 }
@@ -73,6 +75,19 @@ func (c *GGCanvas) DrawRect(rect core.Rect, paint *core.Paint) {
 	if paint == nil {
 		return
 	}
+	if c.clip.active {
+		if c.isOutsideClip(rect) {
+			return
+		}
+		// Fill-only fast path: intersect rect with clip to avoid drawing
+		// invisible portions. gg's clip handles the rest for correctness.
+		if paint.DrawStyle == core.PaintFill {
+			rect = c.clipLocalRect(rect)
+			if rect.Width <= 0 || rect.Height <= 0 {
+				return
+			}
+		}
+	}
 	c.dc.DrawRectangle(rect.X, rect.Y, rect.Width, rect.Height)
 	c.applyPaint(paint)
 }
@@ -86,6 +101,9 @@ func (c *GGCanvas) DrawRoundRect(rect core.Rect, radius float64, paint *core.Pai
 		c.DrawRect(rect, paint)
 		return
 	}
+	if c.clip.active && c.isOutsideClip(rect) {
+		return
+	}
 	c.dc.DrawRoundedRectangle(rect.X, rect.Y, rect.Width, rect.Height, radius)
 	c.applyPaint(paint)
 }
@@ -94,6 +112,12 @@ func (c *GGCanvas) DrawRoundRect(rect core.Rect, radius float64, paint *core.Pai
 func (c *GGCanvas) DrawCircle(cx, cy, radius float64, paint *core.Paint) {
 	if paint == nil {
 		return
+	}
+	if c.clip.active {
+		bounds := core.Rect{X: cx - radius, Y: cy - radius, Width: radius * 2, Height: radius * 2}
+		if c.isOutsideClip(bounds) {
+			return
+		}
 	}
 	c.dc.DrawCircle(cx, cy, radius)
 	c.applyPaint(paint)
@@ -104,12 +128,23 @@ func (c *GGCanvas) DrawLine(x1, y1, x2, y2 float64, paint *core.Paint) {
 	if paint == nil {
 		return
 	}
-	c.dc.DrawLine(x1, y1, x2, y2)
-	c.dc.SetColor(paint.Color)
 	sw := paint.StrokeWidth
 	if sw <= 0 {
 		sw = 1
 	}
+	if c.clip.active {
+		bounds := core.Rect{
+			X:      min(x1, x2) - sw,
+			Y:      min(y1, y2) - sw,
+			Width:  max(x1, x2) - min(x1, x2) + sw*2,
+			Height: max(y1, y2) - min(y1, y2) + sw*2,
+		}
+		if c.isOutsideClip(bounds) {
+			return
+		}
+	}
+	c.dc.DrawLine(x1, y1, x2, y2)
+	c.dc.SetColor(paint.Color)
 	c.dc.SetLineWidth(sw)
 	c.dc.Stroke()
 }
@@ -292,30 +327,23 @@ func (c *GGCanvas) Translate(dx, dy float64) {
 }
 
 // ClipRect intersects the current clip with the given rectangle.
+// gg's Clip() provides pixel-perfect clipping (including antialiased edges).
+// The manual clip rect is maintained in parallel for fast early-out checks
+// in drawing methods (skip shapes entirely outside the clip).
 func (c *GGCanvas) ClipRect(rect core.Rect) {
 	c.dc.DrawRectangle(rect.X, rect.Y, rect.Width, rect.Height)
 	c.dc.Clip()
 
-	// Track clip rect in absolute (image) coordinates for DrawText/DrawImage
 	absX1 := rect.X + c.tx
 	absY1 := rect.Y + c.ty
 	absX2 := absX1 + rect.Width
 	absY2 := absY1 + rect.Height
 
 	if c.clip.active {
-		// Intersect with existing clip
-		if absX1 < c.clip.x1 {
-			absX1 = c.clip.x1
-		}
-		if absY1 < c.clip.y1 {
-			absY1 = c.clip.y1
-		}
-		if absX2 > c.clip.x2 {
-			absX2 = c.clip.x2
-		}
-		if absY2 > c.clip.y2 {
-			absY2 = c.clip.y2
-		}
+		absX1 = max(absX1, c.clip.x1)
+		absY1 = max(absY1, c.clip.y1)
+		absX2 = min(absX2, c.clip.x2)
+		absY2 = min(absY2, c.clip.y2)
 	}
 
 	c.clip = clipRect{x1: absX1, y1: absY1, x2: absX2, y2: absY2, active: true}
@@ -324,6 +352,40 @@ func (c *GGCanvas) ClipRect(rect core.Rect) {
 // Target returns the underlying RGBA image.
 func (c *GGCanvas) Target() *image.RGBA {
 	return c.targetRGBA()
+}
+
+// ---------- Clip helpers ----------
+
+// isOutsideClip checks if a local-coordinate rect is entirely outside the active clip.
+func (c *GGCanvas) isOutsideClip(rect core.Rect) bool {
+	if !c.clip.active {
+		return false
+	}
+	absX := rect.X + c.tx
+	absY := rect.Y + c.ty
+	return absX+rect.Width <= c.clip.x1 || absX >= c.clip.x2 ||
+		absY+rect.Height <= c.clip.y1 || absY >= c.clip.y2
+}
+
+// clipLocalRect intersects a local-coordinate rect with the active clip and
+// returns the result in local coordinates.
+func (c *GGCanvas) clipLocalRect(rect core.Rect) core.Rect {
+	if !c.clip.active {
+		return rect
+	}
+	absX1 := max(rect.X+c.tx, c.clip.x1)
+	absY1 := max(rect.Y+c.ty, c.clip.y1)
+	absX2 := min(rect.X+c.tx+rect.Width, c.clip.x2)
+	absY2 := min(rect.Y+c.ty+rect.Height, c.clip.y2)
+	if absX2 <= absX1 || absY2 <= absY1 {
+		return core.Rect{}
+	}
+	return core.Rect{
+		X:      absX1 - c.tx,
+		Y:      absY1 - c.ty,
+		Width:  absX2 - absX1,
+		Height: absY2 - absY1,
+	}
 }
 
 // ---------- Internal helpers ----------
