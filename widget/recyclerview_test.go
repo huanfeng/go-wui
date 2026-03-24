@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 // testRecyclerAdapter is a simple adapter for testing.

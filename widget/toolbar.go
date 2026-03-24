@@ -3,7 +3,7 @@ package widget
 import (
 	"image/color"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 // defaultToolbarHeight is the standard toolbar height in dp (Android convention).

@@ -3,7 +3,7 @@ package widget
 import (
 	"image/color"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 // defaultTabHeight is the standard tab bar height in dp.

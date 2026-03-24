@@ -1,6 +1,6 @@
 package platform
 
-import "gowui/core"
+import "github.com/huanfeng/go-wui/core"
 
 // WindowOptions configures a new window before it is created.
 type WindowOptions struct {

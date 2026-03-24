@@ -1,9 +1,9 @@
 package res
 
 import (
-	"gowui/core"
-	"gowui/layout"
-	"gowui/widget"
+	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/go-wui/layout"
+	"github.com/huanfeng/go-wui/widget"
 )
 
 // RegisterBuiltinViews registers all built-in view factories with the inflater.

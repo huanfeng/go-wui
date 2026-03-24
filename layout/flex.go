@@ -1,6 +1,6 @@
 package layout
 
-import "gowui/core"
+import "github.com/huanfeng/go-wui/core"
 
 // FlexWrap controls whether children wrap to the next line.
 type FlexWrap int

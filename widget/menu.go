@@ -3,7 +3,7 @@ package widget
 import (
 	"image/color"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 // MenuItem represents a single item in a menu.

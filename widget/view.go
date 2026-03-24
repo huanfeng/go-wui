@@ -1,6 +1,6 @@
 package widget
 
-import "gowui/core"
+import "github.com/huanfeng/go-wui/core"
 
 // ViewWidget is a basic view that draws a background and border.
 type ViewWidget struct {

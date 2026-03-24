@@ -3,8 +3,8 @@ package widget
 import (
 	"testing"
 
-	"gowui/core"
-	"gowui/layout"
+	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/go-wui/layout"
 )
 
 func TestNewSplitPane(t *testing.T) {

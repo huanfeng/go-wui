@@ -1,6 +1,6 @@
 package widget
 
-import "gowui/core"
+import "github.com/huanfeng/go-wui/core"
 
 // TextView displays a single block of text.
 type TextView struct {

@@ -4,8 +4,8 @@ import (
 	"math"
 	"time"
 
-	"gowui/core"
-	"gowui/layout"
+	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/go-wui/layout"
 )
 
 // scrollWheelStep is the scroll distance in pixels per mouse wheel notch.

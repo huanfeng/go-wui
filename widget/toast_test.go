@@ -3,7 +3,7 @@ package widget
 import (
 	"testing"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 func TestShowToast(t *testing.T) {

@@ -3,7 +3,7 @@ package widget
 import (
 	"image/color"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 // CheckBox is a checkable box with a text label.

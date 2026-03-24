@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io/fs"
 
-	"gowui/app"
-	"gowui/core"
-	"gowui/platform"
-	"gowui/widget"
+	"github.com/huanfeng/go-wui/app"
+	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/go-wui/platform"
+	"github.com/huanfeng/go-wui/widget"
 )
 
 //go:embed res

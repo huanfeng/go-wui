@@ -10,7 +10,7 @@ import (
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 // FreeTypeTextRenderer implements core.TextRenderer using Go's standard image

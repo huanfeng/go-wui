@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 // ViewFactory creates a Node from an AttributeSet parsed from XML.

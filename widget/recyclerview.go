@@ -5,8 +5,8 @@ import (
 	"math"
 	"time"
 
-	"gowui/core"
-	"gowui/layout"
+	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/go-wui/layout"
 )
 
 // RecyclerAdapter provides data and creates ViewHolders for RecyclerView.

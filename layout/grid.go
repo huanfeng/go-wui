@@ -1,6 +1,6 @@
 package layout
 
-import "gowui/core"
+import "github.com/huanfeng/go-wui/core"
 
 // GridLayout arranges children in a rows × columns grid.
 // Children are placed left-to-right, top-to-bottom.

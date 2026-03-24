@@ -1,6 +1,6 @@
 package layout
 
-import "gowui/core"
+import "github.com/huanfeng/go-wui/core"
 
 // Orientation defines the direction of a LinearLayout.
 type Orientation int

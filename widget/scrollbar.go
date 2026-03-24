@@ -3,8 +3,8 @@ package widget
 import (
 	"image/color"
 
-	"gowui/core"
-	"gowui/layout"
+	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/go-wui/layout"
 )
 
 // Scrollbar is a reusable scrollbar component that handles painting and

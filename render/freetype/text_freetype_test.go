@@ -3,7 +3,7 @@ package freetype
 import (
 	"testing"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 func TestNewFreeTypeTextRenderer(t *testing.T) {

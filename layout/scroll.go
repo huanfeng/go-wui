@@ -1,6 +1,6 @@
 package layout
 
-import "gowui/core"
+import "github.com/huanfeng/go-wui/core"
 
 // ScrollLayout measures its single child with an unbound constraint on the
 // scroll axis, allowing the child to extend beyond the viewport. It stores

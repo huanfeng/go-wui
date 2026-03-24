@@ -8,8 +8,8 @@ import (
 	"testing"
 	"unsafe"
 
-	"gowui/core"
-	"gowui/render/gg"
+	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/go-wui/render/gg"
 )
 
 func TestDWriteInit(t *testing.T) {

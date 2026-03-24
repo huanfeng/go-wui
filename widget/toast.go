@@ -4,7 +4,7 @@ import (
 	"image/color"
 	"time"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 // ToastDuration defines how long a toast is displayed.

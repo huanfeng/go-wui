@@ -3,8 +3,8 @@ package windows
 import (
 	"syscall"
 
-	"gowui/core"
-	"gowui/platform"
+	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/go-wui/platform"
 )
 
 // WindowsPlatform implements platform.Platform for Windows.

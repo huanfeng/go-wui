@@ -8,10 +8,10 @@ import (
 	"syscall"
 	"unsafe"
 
-	"gowui/core"
-	"gowui/layout"
-	"gowui/platform"
-	"gowui/render/gg"
+	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/go-wui/layout"
+	"github.com/huanfeng/go-wui/platform"
+	"github.com/huanfeng/go-wui/render/gg"
 )
 
 // Win32 constants

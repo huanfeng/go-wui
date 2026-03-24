@@ -3,7 +3,7 @@ package layout
 import (
 	"testing"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 // Helper: create leaf node with fixed-size mock painter

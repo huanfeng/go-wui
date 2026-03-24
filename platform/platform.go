@@ -1,6 +1,6 @@
 package platform
 
-import "gowui/core"
+import "github.com/huanfeng/go-wui/core"
 
 // OSType identifies the host operating system.
 type OSType int

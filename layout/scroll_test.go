@@ -3,7 +3,7 @@ package layout
 import (
 	"testing"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 func TestScrollLayoutMeasure_Vertical(t *testing.T) {

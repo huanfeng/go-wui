@@ -1,7 +1,7 @@
 package widget
 
 import (
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 // PagerAdapter provides pages to a ViewPager.

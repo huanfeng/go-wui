@@ -7,11 +7,11 @@ package main
 import (
 	"fmt"
 
-	"gowui/app"
-	"gowui/core"
-	"gowui/layout"
-	"gowui/platform"
-	"gowui/widget"
+	"github.com/huanfeng/go-wui/app"
+	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/go-wui/layout"
+	"github.com/huanfeng/go-wui/platform"
+	"github.com/huanfeng/go-wui/widget"
 )
 
 func main() {

@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 // GUID for COM

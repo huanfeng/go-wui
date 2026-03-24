@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"strings"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 // ResourceManager loads and caches resource values from embedded or override filesystems.

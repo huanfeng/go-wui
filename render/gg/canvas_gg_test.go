@@ -4,7 +4,7 @@ import (
 	"image/color"
 	"testing"
 
-	"gowui/core"
+	"github.com/huanfeng/go-wui/core"
 )
 
 // hasColor checks that at least one of R, G, B channels is non-zero and alpha

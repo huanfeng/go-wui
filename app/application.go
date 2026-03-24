@@ -4,10 +4,10 @@ import (
 	"io/fs"
 	"runtime"
 
-	"gowui/platform"
-	pwin "gowui/platform/windows"
-	"gowui/res"
-	"gowui/theme"
+	"github.com/huanfeng/go-wui/platform"
+	pwin "github.com/huanfeng/go-wui/platform/windows"
+	"github.com/huanfeng/go-wui/res"
+	"github.com/huanfeng/go-wui/theme"
 )
 
 // Application is the top-level entry point for a GoWUI application.

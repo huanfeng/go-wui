@@ -3,8 +3,8 @@
 package windows
 
 import (
-	"gowui/core"
-	"gowui/render/freetype"
+	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/go-wui/render/freetype"
 )
 
 // CreateTextRendererWithFallback returns DirectWrite if available, else FreeType.

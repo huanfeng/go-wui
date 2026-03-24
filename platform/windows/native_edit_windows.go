@@ -5,9 +5,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"gowui/core"
-	"gowui/layout"
-	"gowui/platform"
+	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/go-wui/layout"
+	"github.com/huanfeng/go-wui/platform"
 )
 
 // Win32 EDIT control styles and messages.

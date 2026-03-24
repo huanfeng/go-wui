@@ -1,4 +1,4 @@
-module gowui
+module github.com/huanfeng/go-wui
 
 go 1.26.1
 
