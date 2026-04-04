@@ -75,4 +75,7 @@ type Platform interface {
 	CreateNativeEditText(parent Window) NativeEditText
 	ShowMessageDialog(opts MessageDialogOptions) DialogResult
 	ShowFileDialog(opts FileDialogOptions) (string, error)
+	CreateTrayIcon() TrayIcon
+	CreateClipboardMonitor() ClipboardMonitor
+	CreateHotkeyManager() HotkeyManager
 }

@@ -64,10 +64,8 @@ func (p *WindowsPlatform) CreateTextRenderer() core.TextRenderer {
 	return CreateTextRendererWithFallback()
 }
 
-// Stubs for Phase 1
-
 func (p *WindowsPlatform) GetClipboard() platform.Clipboard {
-	return &stubClipboard{}
+	return &win32Clipboard{}
 }
 
 func (p *WindowsPlatform) GetScreens() []platform.Screen {
@@ -102,20 +100,34 @@ func (p *WindowsPlatform) ShowFileDialog(opts platform.FileDialogOptions) (strin
 	return "", nil
 }
 
-// stubClipboard implements platform.Clipboard as a no-op for Phase 1.
-type stubClipboard struct {
-	text string
+func (p *WindowsPlatform) CreateTrayIcon() platform.TrayIcon {
+	return NewTrayIcon()
 }
 
-func (c *stubClipboard) GetText() (string, error) {
-	return c.text, nil
+func (p *WindowsPlatform) CreateClipboardMonitor() platform.ClipboardMonitor {
+	return NewClipboardMonitor()
 }
 
-func (c *stubClipboard) SetText(text string) error {
-	c.text = text
-	return nil
+func (p *WindowsPlatform) CreateHotkeyManager() platform.HotkeyManager {
+	return NewHotkeyManager()
 }
 
-func (c *stubClipboard) HasText() bool {
-	return c.text != ""
+// win32Clipboard implements platform.Clipboard using real Win32 APIs.
+type win32Clipboard struct{}
+
+func (c *win32Clipboard) GetText() (string, error) {
+	text, ok := readClipboardText()
+	if !ok {
+		return "", nil
+	}
+	return text, nil
+}
+
+func (c *win32Clipboard) SetText(text string) error {
+	return writeClipboardText(text)
+}
+
+func (c *win32Clipboard) HasText() bool {
+	ret, _, _ := procIsClipboardFormatAvailable.Call(CF_UNICODETEXT)
+	return ret != 0
 }

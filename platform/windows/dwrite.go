@@ -582,7 +582,7 @@ func NewDWriteTextRenderer() (*DWriteTextRenderer, error) {
 
 	tr := &DWriteTextRenderer{
 		factory:    factory,
-		fontFamily: "Segoe UI",
+		fontFamily: "Microsoft YaHei UI",
 		fontWeight: DWRITE_FONT_WEIGHT_NORMAL,
 		fontSize:   14,
 	}

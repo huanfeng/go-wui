@@ -14,6 +14,7 @@ type WindowOptions struct {
 	Frameless   bool
 	TopMost     bool
 	Transparent bool
+	NoActivate  bool // window does not steal focus when shown
 	Icon        *core.ImageResource
 }
 

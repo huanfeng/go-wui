@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    width="match_parent"
+    height="match_parent"
+    orientation="vertical"
+    background="#1E1E1E">
+
+    <!-- Toolbar -->
+    <Toolbar
+        id="toolbar"
+        width="match_parent"
+        height="48dp"
+        title="ClipMan"
+        background="#2D2D2D" />
+
+    <!-- Search bar -->
+    <LinearLayout
+        width="match_parent"
+        height="40dp"
+        orientation="horizontal"
+        padding="4dp"
+        background="#252526">
+
+        <EditText
+            id="search_input"
+            width="match_parent"
+            height="match_parent"
+            hint="搜索剪贴板历史..."
+            textSize="14dp"
+            background="#3C3C3C"
+            textColor="#CCCCCC"
+            padding="8dp" />
+    </LinearLayout>
+
+    <!-- Main content: sidebar + list -->
+    <LinearLayout
+        width="match_parent"
+        height="match_parent"
+        orientation="horizontal">
+
+        <!-- Left sidebar: categories -->
+        <LinearLayout
+            id="sidebar"
+            width="180dp"
+            height="match_parent"
+            orientation="vertical"
+            background="#252526"
+            padding="4dp"
+            spacing="2dp">
+
+            <Button
+                id="cat_all"
+                width="match_parent"
+                height="32dp"
+                text="全部"
+                textSize="13dp"
+                gravity="left|center_vertical"
+                background="#37373D"
+                textColor="#CCCCCC" />
+
+            <Button
+                id="cat_pinned"
+                width="match_parent"
+                height="32dp"
+                text="★ 已收藏"
+                textSize="13dp"
+                gravity="left|center_vertical"
+                background="#2D2D2D"
+                textColor="#CCCCCC" />
+
+            <Divider
+                width="match_parent"
+                height="1dp"
+                background="#3C3C3C" />
+
+            <!-- Dynamic category buttons will be added here by code -->
+        </LinearLayout>
+
+        <!-- Divider -->
+        <Divider
+            width="1dp"
+            height="match_parent"
+            background="#3C3C3C" />
+
+        <!-- Right panel: history list + detail -->
+        <LinearLayout
+            width="match_parent"
+            height="match_parent"
+            orientation="vertical">
+
+            <!-- Clip entry list -->
+            <RecyclerView
+                id="clip_list"
+                width="match_parent"
+                height="match_parent"
+                background="#1E1E1E" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Status bar -->
+    <LinearLayout
+        width="match_parent"
+        height="24dp"
+        orientation="horizontal"
+        background="#007ACC"
+        padding="4dp"
+        gravity="center_vertical">
+
+        <TextView
+            id="status_text"
+            width="match_parent"
+            height="wrap_content"
+            text="就绪"
+            textSize="12dp"
+            textColor="#FFFFFF" />
+    </LinearLayout>
+</LinearLayout>

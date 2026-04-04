@@ -273,6 +273,9 @@ func newWin32Window(plat *WindowsPlatform, opts platform.WindowOptions) (*win32W
 	if opts.Transparent {
 		exStyle |= WS_EX_LAYERED
 	}
+	if opts.NoActivate {
+		exStyle |= 0x08000000 // WS_EX_NOACTIVATE
+	}
 
 	// Determine position
 	x := CW_USEDEFAULT
@@ -329,6 +332,17 @@ func newWin32Window(plat *WindowsPlatform, opts platform.WindowOptions) (*win32W
 
 	w.hwnd = hwnd
 	windowMap.Store(hwnd, w)
+
+	// Enable Win11 rounded corners for frameless windows via DWM
+	if opts.Frameless {
+		dwmapi := syscall.NewLazyDLL("dwmapi.dll")
+		dwmSetWindowAttribute := dwmapi.NewProc("DwmSetWindowAttribute")
+		if dwmSetWindowAttribute.Find() == nil {
+			// DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2
+			cornerPref := int32(2)
+			dwmSetWindowAttribute.Call(hwnd, 33, uintptr(unsafe.Pointer(&cornerPref)), 4)
+		}
+	}
 
 	return w, nil
 }

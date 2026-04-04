@@ -83,9 +83,10 @@ type RecyclerView struct {
 	lastTime  time.Time
 	flingAnim *core.ValueAnimator
 
-	onItemClick func(position int)
-	hoveredPos  int
-	pressedPos  int
+	onItemClick      func(position int)
+	onItemRightClick func(position int, screenX, screenY int)
+	hoveredPos       int
+	pressedPos       int
 }
 
 // NewRecyclerView creates a new RecyclerView with the given item height.
@@ -155,6 +156,12 @@ func (rv *RecyclerView) GetScrollY() float64 {
 // SetOnItemClickListener sets the click handler for item clicks.
 func (rv *RecyclerView) SetOnItemClickListener(fn func(position int)) {
 	rv.onItemClick = fn
+}
+
+// SetOnItemRightClickListener sets the handler for right-click on items.
+// screenX/screenY are absolute screen coordinates for menu positioning.
+func (rv *RecyclerView) SetOnItemRightClickListener(fn func(position int, screenX, screenY int)) {
+	rv.onItemRightClick = fn
 }
 
 // NotifyDataSetChanged signals the adapter data has changed.
@@ -456,8 +463,13 @@ func (h *recyclerViewHandler) OnEvent(node *core.Node, event core.Event) bool {
 			rv.pressedPos = -1
 			node.MarkDirty()
 			hit := rv.positionAtY(me.Y)
-			if hit == pos && rv.onItemClick != nil && node.IsEnabled() {
-				rv.onItemClick(pos)
+			if hit == pos && node.IsEnabled() {
+				if me.Button == core.MouseButtonRight && rv.onItemRightClick != nil {
+					// Right-click: use RawX/RawY for screen position
+					rv.onItemRightClick(pos, int(me.RawX), int(me.RawY))
+				} else if rv.onItemClick != nil {
+					rv.onItemClick(pos)
+				}
 			}
 			return true
 		}
