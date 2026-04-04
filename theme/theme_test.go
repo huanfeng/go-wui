@@ -3,11 +3,11 @@ package theme
 import "testing"
 
 func TestThemeResolveAttr(t *testing.T) {
-	xmlData := []byte(`<resources><style name="Theme.GoWUI.Light">
+	xmlData := []byte(`<resources><style name="Theme.WindUI.Light">
 		<item name="colorPrimary">#1976D2</item>
 		<item name="textColorPrimary">#212121</item>
 	</style></resources>`)
-	theme, err := LoadThemeFromXML(xmlData, "Theme.GoWUI.Light")
+	theme, err := LoadThemeFromXML(xmlData, "Theme.WindUI.Light")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,8 +3,8 @@ package widget
 import (
 	"testing"
 
-	"github.com/huanfeng/go-wui/core"
-	"github.com/huanfeng/go-wui/layout"
+	"github.com/huanfeng/wind-ui/core"
+	"github.com/huanfeng/wind-ui/layout"
 )
 
 // testLeafPainter is a simple painter that reports a fixed intrinsic size.

@@ -7,7 +7,7 @@ import (
 
 	foggg "github.com/fogleman/gg"
 
-	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/wind-ui/core"
 )
 
 // clipRect tracks the current clip rectangle in absolute (image) coordinates.

@@ -3,7 +3,7 @@ package widget
 import (
 	"image/color"
 
-	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/wind-ui/core"
 )
 
 // EditText is a text-input widget backed by a platform-native EDIT control.

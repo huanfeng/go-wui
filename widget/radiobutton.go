@@ -3,7 +3,7 @@ package widget
 import (
 	"image/color"
 
-	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/wind-ui/core"
 )
 
 // RadioButton is a selectable circle with a text label.

@@ -4,7 +4,7 @@ import (
 	"image/color"
 	"time"
 
-	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/wind-ui/core"
 )
 
 // ToastDuration defines how long a toast is displayed.

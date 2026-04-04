@@ -6,7 +6,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/huanfeng/go-wui/platform"
+	"github.com/huanfeng/wind-ui/platform"
 )
 
 // Win32 clipboard constants

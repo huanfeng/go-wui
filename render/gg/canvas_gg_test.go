@@ -4,7 +4,7 @@ import (
 	"image/color"
 	"testing"
 
-	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/wind-ui/core"
 )
 
 // hasColor checks that at least one of R, G, B channels is non-zero and alpha

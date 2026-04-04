@@ -1,6 +1,6 @@
 package app
 
-import "github.com/huanfeng/go-wui/core"
+import "github.com/huanfeng/wind-ui/core"
 
 // PaintNode recursively paints a node tree onto a canvas.
 // It respects visibility, applies translation for each node's bounds,

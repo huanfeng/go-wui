@@ -1,6 +1,6 @@
 package layout
 
-import "github.com/huanfeng/go-wui/core"
+import "github.com/huanfeng/wind-ui/core"
 
 // FrameLayout stacks all children on top of each other.
 // Each child's position is controlled by its Style.Gravity.

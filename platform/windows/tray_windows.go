@@ -4,7 +4,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/huanfeng/go-wui/platform"
+	"github.com/huanfeng/wind-ui/platform"
 )
 
 // Win32 tray/menu constants
@@ -105,7 +105,7 @@ func NewTrayIcon() platform.TrayIcon {
 	t.nid.UCallbackMessage = uint32(WM_APP_TRAY)
 
 	// Set default tooltip
-	tip, _ := syscall.UTF16FromString("GoWUI")
+	tip, _ := syscall.UTF16FromString("WindUI")
 	copy(t.nid.SzTip[:], tip)
 
 	// Use system default icon (IDI_APPLICATION = 32512)

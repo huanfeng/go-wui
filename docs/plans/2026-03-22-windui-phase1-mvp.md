@@ -1,14 +1,14 @@
-# GoWUI Phase 1 (MVP) Implementation Plan
+# Wind UI Phase 1 (MVP) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the GoWUI framework skeleton from Backend to Application layer, delivering a working MVP where an XML-described window with text and buttons renders on screen and responds to clicks.
+**Goal:** Build the Wind UI framework skeleton from Backend to Application layer, delivering a working MVP where an XML-described window with text and buttons renders on screen and responds to clicks.
 
 **Architecture:** Six-layer architecture (Backend → Platform → Render → Core → Widget → Application). Node-based composition model with pluggable Layout/Painter/Handler/Style. Android-style XML UI description with resource management.
 
 **Tech Stack:** Go 1.22+, gogpu/gg (graphics), DirectWrite via C++ shim DLL (Windows text), Win32 API (windowing), encoding/xml (XML parsing)
 
-**Spec:** `docs/specs/2026-03-22-gowui-architecture-design.md`
+**Spec:** `docs/specs/2026-03-22-windui-architecture-design.md`
 
 ---
 
@@ -17,8 +17,8 @@
 **Import Cycle 解决方案：** Canvas 接口、Paint 结构体、TextRenderer 接口均定义在 `core/` 包中（与 Node、Painter、Handler 同包），避免 `core/` ↔ `render/` 的循环依赖。`render/gg/` 和 `platform/windows/` 仅实现这些接口。
 
 ```
-gowui/
- ├─ go.mod                     module gowui (所有内部 import 使用 gowui/core, gowui/widget 等)
+windui/
+ ├─ go.mod                     module windui (所有内部 import 使用 windui/core, windui/widget 等)
  ├─ go.sum
  │
  ├─ core/                      所有接口和基础类型（零外部依赖，平台无关）
@@ -121,10 +121,10 @@ gowui/
 
 ```bash
 cd D:\Develop\workspace\go_dev\go_wui
-go mod init gowui
+go mod init windui
 ```
 
-使用短模块路径 `gowui`，所有内部 import 使用 `gowui/core`、`gowui/widget` 等。如果后续要发布到 GitHub，可以改为 `github.com/<user>/gowui`。
+使用短模块路径 `windui`，所有内部 import 使用 `windui/core`、`windui/widget` 等。如果后续要发布到 GitHub，可以改为 `github.com/<user>/windui`。
 
 - [ ] **Step 2: Write tests for core types**
 
@@ -1019,7 +1019,7 @@ package freetype
 
 import (
     "testing"
-    "gowui/core"
+    "windui/core"
 )
 
 func TestFreeTypeMeasureText_NonZero(t *testing.T) {
@@ -1110,7 +1110,7 @@ go get golang.org/x/sys@latest
 `window_windows.go`:
 - Win32 Window wrapper implementing platform.Window
 - WndProc callback: handle WM_PAINT, WM_SIZE, WM_CLOSE, WM_DESTROY, WM_MOUSEMOVE, WM_LBUTTONDOWN/UP, WM_KEYDOWN/UP, WM_MOUSEWHEEL, WM_DPICHANGED
-- Convert Win32 messages to GoWUI Events (MotionEvent, KeyEvent)
+- Convert Win32 messages to Wind UI Events (MotionEvent, KeyEvent)
 - Transparent mode: RGBA → BGRA + UpdateLayeredWindow
 
 `msgloop.go`:
@@ -1130,15 +1130,15 @@ package main
 
 import (
     "runtime"
-    "gowui/platform/windows"
-    "gowui/platform"
+    "windui/platform/windows"
+    "windui/platform"
 )
 
 func main() {
     runtime.LockOSThread()
     p := windows.NewPlatform()
     w, _ := p.CreateWindow(platform.WindowOptions{
-        Title:  "GoWUI Test",
+        Title:  "Wind UI Test",
         Width:  400,
         Height: 300,
     })
@@ -1151,7 +1151,7 @@ func main() {
 go run ./cmd/test_window/
 ```
 
-Expected: a 400x300 window appears with title "GoWUI Test", can be moved/resized/closed.
+Expected: a 400x300 window appears with title "Wind UI Test", can be moved/resized/closed.
 
 - [ ] **Step 4: Write DPI and event conversion unit tests**
 
@@ -1202,7 +1202,7 @@ git commit -m "feat(platform/windows): Win32 window creation, message loop, DPI,
 - [ ] **Step 1: Implement DWriteTextRenderer**
 
 Port the approach from WindInput's `dwrite_text.go`:
-- Load `wind_dwrite.dll` (or a new `gowui_dwrite.dll`) via syscall.NewLazyDLL
+- Load `wind_dwrite.dll` (or a new `windui_dwrite.dll`) via syscall.NewLazyDLL
 - Implement TextRenderer interface: SetFont, MeasureText, DrawText, CreateTextLayout
 - CreateTextLayout: use IDWriteTextLayout for native line-breaking and measurement
 - Fallback: if DLL not found, return error so platform can fall back to FreeType
@@ -1231,7 +1231,7 @@ package layout
 
 import (
     "testing"
-    "gowui/core"
+    "windui/core"
 )
 
 func TestLinearVertical_WrapContent(t *testing.T) {
@@ -1583,11 +1583,11 @@ git commit -m "feat(res): implement LayoutInflater with XML parsing, resource re
 ```go
 // theme/theme_test.go
 func TestThemeResolveAttr(t *testing.T) {
-    themeXML := `<resources><style name="Theme.GoWUI.Light">
+    themeXML := `<resources><style name="Theme.Wind UI.Light">
         <item name="colorPrimary">#1976D2</item>
         <item name="textColorPrimary">#212121</item>
     </style></resources>`
-    theme, _ := LoadThemeFromXML([]byte(themeXML), "Theme.GoWUI.Light")
+    theme, _ := LoadThemeFromXML([]byte(themeXML), "Theme.Wind UI.Light")
     c := theme.ResolveAttr("colorPrimary")
     if c != "#1976D2" { t.Errorf("got %s", c) }
 }
@@ -1612,7 +1612,7 @@ func TestStyleInheritance(t *testing.T) {
 - StyleRegistry: stores named styles, resolves parent chain (explicit parent= and implicit dot notation)
 - ResolveAttr: lookup ?attr/key in current theme
 - Style resolution chain: inline → @style/ → theme default → hardcoded fallback
-- Built-in Theme.GoWUI.Light and Theme.GoWUI.Dark
+- Built-in Theme.Wind UI.Light and Theme.Wind UI.Dark
 
 - [ ] **Step 3: Run tests**
 
@@ -1767,7 +1767,7 @@ git commit -m "feat(app): implement Application lifecycle and render loop (measu
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_title">Hello GoWUI!</string>
+    <string name="app_title">Hello Wind UI!</string>
     <string name="description">A lightweight native UI framework for Go</string>
     <string name="confirm">OK</string>
     <string name="cancel">Cancel</string>
@@ -1817,10 +1817,10 @@ import (
     "fmt"
     "runtime"
 
-    "gowui/app"
-    "gowui/core"
-    "gowui/platform"
-    "gowui/widget"
+    "windui/app"
+    "windui/core"
+    "windui/platform"
+    "windui/widget"
 )
 
 //go:embed res
@@ -1833,7 +1833,7 @@ func main() {
     application.Resources().SetEmbedded(resources)
 
     window, err := application.CreateWindow(platform.WindowOptions{
-        Title:  "Hello GoWUI",
+        Title:  "Hello Wind UI",
         Width:  400,
         Height: 300,
     })
@@ -1880,7 +1880,7 @@ cd D:\Develop\workspace\go_dev\go_wui && go run ./examples/hello/
 ```
 
 Expected: A 400x300 window appears with:
-- "Hello GoWUI!" title text centered
+- "Hello Wind UI!" title text centered
 - Description text below
 - Two buttons side-by-side at bottom: "Cancel" (outlined) and "OK" (filled blue)
 - Clicking buttons triggers visual feedback (hover/pressed states)

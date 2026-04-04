@@ -1,4 +1,4 @@
-module github.com/huanfeng/go-wui
+module github.com/huanfeng/wind-ui
 
 go 1.26.1
 

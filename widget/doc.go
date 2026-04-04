@@ -1,4 +1,4 @@
-// Package widget provides the built-in UI controls for GoWUI.
+// Package widget provides the built-in UI controls for Wind UI.
 //
 // Every widget wraps a *core.Node and implements the core.View interface.
 // Widgets follow an Android-inspired naming convention and API style.

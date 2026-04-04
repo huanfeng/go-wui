@@ -1,6 +1,6 @@
 package widget
 
-import "github.com/huanfeng/go-wui/core"
+import "github.com/huanfeng/wind-ui/core"
 
 // ScaleType controls how an image is scaled within its bounds.
 type ScaleType int

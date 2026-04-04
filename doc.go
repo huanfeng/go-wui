@@ -1,6 +1,6 @@
-// Package gowui is a lightweight, native desktop UI framework for Go.
+// Package windui is a lightweight, native desktop UI framework for Go.
 //
-// GoWUI provides an Android-inspired widget and layout system for building
+// Wind UI provides an Android-inspired widget and layout system for building
 // small, memory-efficient Windows desktop applications. It features XML
 // declarative layouts, a composable Node tree, high-quality text rendering
 // (DirectWrite / FreeType), DPI awareness, and a rich set of built-in controls.
@@ -22,7 +22,7 @@
 //	resFS, _ := fs.Sub(resources, "res")
 //	application.SetEmbeddedResources(resFS)
 //	window, _ := application.CreateWindow(platform.WindowOptions{
-//	    Title: "Hello GoWUI", Width: 400, Height: 300,
+//	    Title: "Hello Wind UI", Width: 400, Height: 300,
 //	})
 //	root := application.Inflater().Inflate("@layout/main")
 //	window.SetContentView(root)
@@ -30,4 +30,4 @@
 //	application.Run()
 //
 // See the examples/ directory for complete working applications.
-package gowui
+package windui

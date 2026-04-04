@@ -3,7 +3,7 @@ package layout
 import (
 	"testing"
 
-	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/wind-ui/core"
 )
 
 func TestGridLayoutMeasure(t *testing.T) {

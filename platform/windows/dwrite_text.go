@@ -3,8 +3,8 @@
 package windows
 
 import (
-	"github.com/huanfeng/go-wui/core"
-	"github.com/huanfeng/go-wui/render/freetype"
+	"github.com/huanfeng/wind-ui/core"
+	"github.com/huanfeng/wind-ui/render/freetype"
 )
 
 // CreateTextRendererWithFallback returns DirectWrite if available, else FreeType.

@@ -49,7 +49,7 @@ func getMessageWindow() *messageWindow {
 }
 
 func (mw *messageWindow) create() {
-	className, _ := syscall.UTF16PtrFromString("GoWUI_MsgWindow")
+	className, _ := syscall.UTF16PtrFromString("WindUI_MsgWindow")
 
 	hInst, _, _ := procGetModuleHandleW.Call(0)
 

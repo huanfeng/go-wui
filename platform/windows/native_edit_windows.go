@@ -5,9 +5,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/huanfeng/go-wui/core"
-	"github.com/huanfeng/go-wui/layout"
-	"github.com/huanfeng/go-wui/platform"
+	"github.com/huanfeng/wind-ui/core"
+	"github.com/huanfeng/wind-ui/layout"
+	"github.com/huanfeng/wind-ui/platform"
 )
 
 // Win32 EDIT control styles and messages.

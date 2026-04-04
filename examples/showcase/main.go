@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io/fs"
 
-	"github.com/huanfeng/go-wui/app"
-	"github.com/huanfeng/go-wui/core"
-	"github.com/huanfeng/go-wui/platform"
-	"github.com/huanfeng/go-wui/widget"
+	"github.com/huanfeng/wind-ui/app"
+	"github.com/huanfeng/wind-ui/core"
+	"github.com/huanfeng/wind-ui/platform"
+	"github.com/huanfeng/wind-ui/widget"
 )
 
 //go:embed res
@@ -24,7 +24,7 @@ func main() {
 	application.SetEmbeddedResources(resFS)
 
 	window, err := application.CreateWindow(platform.WindowOptions{
-		Title:     "GoWUI Widget Showcase",
+		Title:     "Wind UI Widget Showcase",
 		Width:     500,
 		Height:    600,
 		Resizable: true,

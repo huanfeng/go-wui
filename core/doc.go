@@ -1,4 +1,4 @@
-// Package core provides the foundational types and interfaces for the GoWUI framework.
+// Package core provides the foundational types and interfaces for the Wind UI framework.
 //
 // It defines the Node tree structure, View interface, layout engine protocols,
 // event dispatch system, Canvas/Paint drawing abstractions, style management,

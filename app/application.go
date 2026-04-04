@@ -4,13 +4,13 @@ import (
 	"io/fs"
 	"runtime"
 
-	"github.com/huanfeng/go-wui/platform"
-	pwin "github.com/huanfeng/go-wui/platform/windows"
-	"github.com/huanfeng/go-wui/res"
-	"github.com/huanfeng/go-wui/theme"
+	"github.com/huanfeng/wind-ui/platform"
+	pwin "github.com/huanfeng/wind-ui/platform/windows"
+	"github.com/huanfeng/wind-ui/res"
+	"github.com/huanfeng/wind-ui/theme"
 )
 
-// Application is the top-level entry point for a GoWUI application.
+// Application is the top-level entry point for a Wind UI application.
 // It owns the platform, resource manager, layout inflater, theme, and windows.
 type Application struct {
 	plat      platform.Platform

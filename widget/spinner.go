@@ -3,7 +3,7 @@ package widget
 import (
 	"image/color"
 
-	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/wind-ui/core"
 )
 
 // Spinner is a dropdown selection widget. It displays the currently selected

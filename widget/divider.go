@@ -3,7 +3,7 @@ package widget
 import (
 	"image/color"
 
-	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/wind-ui/core"
 )
 
 // Divider is a simple horizontal or vertical line separator.

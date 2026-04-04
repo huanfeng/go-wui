@@ -1,8 +1,8 @@
-# GoWUI
+# Wind UI
 
 Go 原生轻量桌面 UI 框架 — 用 Go 构建小巧、高效的 Windows 桌面应用。
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/huanfeng/go-wui.svg)](https://pkg.go.dev/github.com/huanfeng/go-wui)
+[![Go Reference](https://pkg.go.dev/badge/github.com/huanfeng/wind-ui.svg)](https://pkg.go.dev/github.com/huanfeng/wind-ui)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## 设计目标
@@ -37,7 +37,7 @@ Go 原生轻量桌面 UI 框架 — 用 Go 构建小巧、高效的 Windows 桌�
 ### 安装
 
 ```bash
-go get github.com/huanfeng/go-wui@latest
+go get github.com/huanfeng/wind-ui@latest
 ```
 
 ### Hello World
@@ -54,10 +54,10 @@ import (
     "fmt"
     "io/fs"
 
-    "github.com/huanfeng/go-wui/app"
-    "github.com/huanfeng/go-wui/core"
-    "github.com/huanfeng/go-wui/platform"
-    "github.com/huanfeng/go-wui/widget"
+    "github.com/huanfeng/wind-ui/app"
+    "github.com/huanfeng/wind-ui/core"
+    "github.com/huanfeng/wind-ui/platform"
+    "github.com/huanfeng/wind-ui/widget"
 )
 
 //go:embed res
@@ -70,7 +70,7 @@ func main() {
     application.SetEmbeddedResources(resFS)
 
     window, _ := application.CreateWindow(platform.WindowOptions{
-        Title:     "Hello GoWUI",
+        Title:     "Hello Wind UI",
         Width:     400,
         Height:    300,
         Resizable: true,
@@ -108,7 +108,7 @@ func main() {
     <TextView
         width="match_parent"
         height="wrap_content"
-        text="Hello, GoWUI!"
+        text="Hello, Wind UI!"
         textSize="28dp"
         gravity="center" />
 
@@ -125,7 +125,7 @@ func main() {
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_title">Hello GoWUI</string>
+    <string name="app_title">Hello Wind UI</string>
 </resources>
 ```
 
@@ -139,7 +139,7 @@ go run .
 
 ## 架构
 
-GoWUI 采用六层架构，自底向上：
+Wind UI 采用六层架构，自底向上：
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -166,7 +166,7 @@ GoWUI 采用六层架构，自底向上：
 ### 目录结构
 
 ```
-go-wui/
+wind-ui/
 ├── core/           # 框架核心：Node 树、事件系统、布局接口、动画
 ├── layout/         # 布局引擎：LinearLayout, FrameLayout, FlexLayout, GridLayout, ScrollLayout
 ├── widget/         # 控件库：30+ 控件
@@ -292,8 +292,8 @@ go-wui/
 
 ```bash
 # 克隆仓库
-git clone https://github.com/huanfeng/go-wui.git
-cd go-wui
+git clone https://github.com/huanfeng/wind-ui.git
+cd wind-ui
 
 # 运行 Hello World 示例
 go run ./examples/hello/

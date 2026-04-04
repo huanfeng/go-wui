@@ -1,4 +1,4 @@
-// Package platform defines the platform abstraction interfaces for GoWUI.
+// Package platform defines the platform abstraction interfaces for Wind UI.
 //
 // These interfaces isolate the framework from operating system specifics,
 // allowing the core, layout, widget, and render layers to remain fully

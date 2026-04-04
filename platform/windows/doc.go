@@ -1,4 +1,4 @@
-// Package windows implements the GoWUI platform interfaces for Microsoft Windows.
+// Package windows implements the Wind UI platform interfaces for Microsoft Windows.
 //
 // It provides:
 //   - Win32 window creation and message loop (CreateWindowEx, GetMessage/DispatchMessage)

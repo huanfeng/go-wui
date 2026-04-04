@@ -1,4 +1,4 @@
-// Package res provides the resource management system for GoWUI.
+// Package res provides the resource management system for Wind UI.
 //
 // It handles loading, caching, and resolving resources from multiple sources:
 // go:embed filesystems, override directories, and locale-specific variants.

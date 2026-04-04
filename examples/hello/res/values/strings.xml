@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_title">Hello GoWUI!</string>
+    <string name="app_title">Hello Wind UI!</string>
     <string name="description">A lightweight native UI framework for Go</string>
     <string name="confirm">OK</string>
     <string name="cancel">Cancel</string>

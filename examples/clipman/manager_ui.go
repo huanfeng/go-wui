@@ -7,11 +7,11 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/huanfeng/go-wui/core"
-	"github.com/huanfeng/go-wui/examples/clipman/store"
-	"github.com/huanfeng/go-wui/layout"
-	"github.com/huanfeng/go-wui/platform"
-	"github.com/huanfeng/go-wui/widget"
+	"github.com/huanfeng/wind-ui/core"
+	"github.com/huanfeng/wind-ui/examples/clipman/store"
+	"github.com/huanfeng/wind-ui/layout"
+	"github.com/huanfeng/wind-ui/platform"
+	"github.com/huanfeng/wind-ui/widget"
 )
 
 // Win11 Fluent theme

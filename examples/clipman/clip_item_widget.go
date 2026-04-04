@@ -3,7 +3,7 @@ package main
 import (
 	"image/color"
 
-	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/wind-ui/core"
 )
 
 // ClipItemWidget is a custom View that draws a Win11-style clipboard card.

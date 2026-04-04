@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/huanfeng/go-wui/platform"
+	"github.com/huanfeng/wind-ui/platform"
 )
 
 var (

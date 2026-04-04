@@ -1,6 +1,6 @@
 package widget
 
-import "github.com/huanfeng/go-wui/core"
+import "github.com/huanfeng/wind-ui/core"
 
 // BaseView provides the shared View interface implementation.
 // Concrete widgets embed this.

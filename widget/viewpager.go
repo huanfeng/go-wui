@@ -1,7 +1,7 @@
 package widget
 
 import (
-	"github.com/huanfeng/go-wui/core"
+	"github.com/huanfeng/wind-ui/core"
 )
 
 // PagerAdapter provides pages to a ViewPager.

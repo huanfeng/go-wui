@@ -1,4 +1,4 @@
-// Package layout provides the built-in layout engines for GoWUI.
+// Package layout provides the built-in layout engines for Wind UI.
 //
 // Each layout implements the core.Layout interface (Measure + Arrange) and
 // optionally core.DPIScalable for dp-to-px conversion on high-DPI displays.

@@ -1,4 +1,4 @@
-// Package app provides the application entry point and render loop for GoWUI.
+// Package app provides the application entry point and render loop for Wind UI.
 //
 // Application is the top-level object that owns the platform backend,
 // resource manager, layout inflater, theme, and window list. A typical

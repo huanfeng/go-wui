@@ -6,9 +6,9 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/huanfeng/go-wui/examples/clipman/store"
-	"github.com/huanfeng/go-wui/platform"
-	pwin "github.com/huanfeng/go-wui/platform/windows"
+	"github.com/huanfeng/wind-ui/examples/clipman/store"
+	"github.com/huanfeng/wind-ui/platform"
+	pwin "github.com/huanfeng/wind-ui/platform/windows"
 )
 
 const (

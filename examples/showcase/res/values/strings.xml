@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="title">GoWUI Widget Showcase</string>
+    <string name="title">Wind UI Widget Showcase</string>
     <string name="status_default">Interact with widgets below</string>
     <string name="section_buttons">Buttons</string>
     <string name="section_toggles">CheckBox &amp; Switch</string>
@@ -18,5 +18,5 @@
     <string name="et_hint_name">Enter your name</string>
     <string name="et_hint_email">Enter your email</string>
     <string name="btn_submit">Submit</string>
-    <string name="footer">GoWUI Phase 2 — All widgets demo</string>
+    <string name="footer">Wind UI Phase 2 — All widgets demo</string>
 </resources>

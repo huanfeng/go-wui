@@ -1,6 +1,6 @@
 package layout
 
-import "github.com/huanfeng/go-wui/core"
+import "github.com/huanfeng/wind-ui/core"
 
 // FlexWrap controls whether children wrap to the next line.
 type FlexWrap int

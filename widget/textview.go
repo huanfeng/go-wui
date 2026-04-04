@@ -1,6 +1,6 @@
 package widget
 
-import "github.com/huanfeng/go-wui/core"
+import "github.com/huanfeng/wind-ui/core"
 
 // TextView displays a single block of text.
 type TextView struct {

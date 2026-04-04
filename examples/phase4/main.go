@@ -7,11 +7,11 @@ package main
 import (
 	"fmt"
 
-	"github.com/huanfeng/go-wui/app"
-	"github.com/huanfeng/go-wui/core"
-	"github.com/huanfeng/go-wui/layout"
-	"github.com/huanfeng/go-wui/platform"
-	"github.com/huanfeng/go-wui/widget"
+	"github.com/huanfeng/wind-ui/app"
+	"github.com/huanfeng/wind-ui/core"
+	"github.com/huanfeng/wind-ui/layout"
+	"github.com/huanfeng/wind-ui/platform"
+	"github.com/huanfeng/wind-ui/widget"
 )
 
 var globalWindow platform.Window
@@ -20,7 +20,7 @@ func main() {
 	application := app.NewApplication()
 
 	window, err := application.CreateWindow(platform.WindowOptions{
-		Title:     "GoWUI Phase 4 — Advanced Controls",
+		Title:     "Wind UI Phase 4 — Advanced Controls",
 		Width:     500,
 		Height:    560,
 		Resizable: true,
