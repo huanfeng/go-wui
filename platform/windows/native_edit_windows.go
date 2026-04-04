@@ -10,6 +10,25 @@ import (
 	"github.com/huanfeng/wind-ui/platform"
 )
 
+// GDI font procs used by native EDIT controls.
+var (
+	procCreateFontW  *syscall.LazyProc
+	procSetTextColor *syscall.LazyProc
+	procSetBkMode    *syscall.LazyProc
+	procExtTextOutW  *syscall.LazyProc
+	gdiTextProcsOnce sync.Once
+)
+
+func initGDITextProcs() {
+	gdiTextProcsOnce.Do(func() {
+		gdi := syscall.NewLazyDLL("gdi32.dll")
+		procCreateFontW = gdi.NewProc("CreateFontW")
+		procSetTextColor = gdi.NewProc("SetTextColor")
+		procSetBkMode = gdi.NewProc("SetBkMode")
+		procExtTextOutW = gdi.NewProc("ExtTextOutW")
+	})
+}
+
 // Win32 EDIT control styles and messages.
 const (
 	wsChild       = 0x40000000

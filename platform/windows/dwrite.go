@@ -190,7 +190,7 @@ func initGoTextRendererVtable() *goTextRendererVtable {
 			IsPixelSnappingDisabled: syscall.NewCallback(goTR_IsPixelSnappingDisabled),
 			GetCurrentTransform:     syscall.NewCallback(goTR_GetCurrentTransform),
 			GetPixelsPerDip:         syscall.NewCallback(goTR_GetPixelsPerDip),
-			DrawGlyphRun:            syscall.NewCallback(goTR_DrawGlyphRun),
+			DrawGlyphRun:            cgoDrawGlyphRunCallback(), // CGO bridge — correct float ABI via XMM registers
 			DrawUnderline:           syscall.NewCallback(goTR_DrawUnderline),
 			DrawStrikethrough:       syscall.NewCallback(goTR_DrawStrikethrough),
 			DrawInlineObject:        syscall.NewCallback(goTR_DrawInlineObject),
@@ -280,48 +280,8 @@ func goTR_GetPixelsPerDip(this uintptr, clientDrawingContext uintptr, pixelsPerD
 	return _S_OK
 }
 
-// goTR_DrawGlyphRun — IDWriteTextRenderer::DrawGlyphRun. This is the core callback.
-// Signature: HRESULT (this, clientDrawingContext, baselineOriginX, baselineOriginY,
-//
-//	measuringMode, glyphRun, glyphRunDescription, clientDrawingEffect)
-//
-// IMPORTANT: syscall.NewCallback on Windows does NOT support float parameters.
-// All parameters must be uintptr. Float values arrive as their bit representation
-// in a uintptr-sized word.
-func goTR_DrawGlyphRun(
-	this uintptr,
-	clientDrawingContext uintptr,
-	baselineOriginXBits uintptr,
-	baselineOriginYBits uintptr,
-	measuringMode uintptr,
-	glyphRun uintptr,
-	glyphRunDescription uintptr,
-	clientDrawingEffect uintptr,
-) uintptr {
-	tr := (*goTextRenderer)(unsafe.Pointer(this))
-	tr.drawCallCount++
-	if tr.bitmapTarget == 0 {
-		return _S_OK
-	}
-
-	// Delegate to IDWriteBitmapRenderTarget::DrawGlyphRun (vtable index 3).
-	// Signature: HRESULT DrawGlyphRun(FLOAT baselineOriginX, FLOAT baselineOriginY,
-	//   DWRITE_MEASURING_MODE measuringMode, DWRITE_GLYPH_RUN const *glyphRun,
-	//   IDWriteRenderingParams *renderingParams, COLORREF textColor,
-	//   RECT *blackBoxRect)
-	var blackBoxRect RECT
-	hr, _ := comCall(tr.bitmapTarget, 3,
-		baselineOriginXBits, // float32 bits passed through as-is
-		baselineOriginYBits, // float32 bits passed through as-is
-		measuringMode,
-		glyphRun,
-		tr.renderParams,
-		uintptr(tr.textColor),
-		uintptr(unsafe.Pointer(&blackBoxRect)),
-	)
-	tr.lastDrawHR = hr
-	return _S_OK
-}
+// goTR_DrawGlyphRun is now handled by the CGO trampoline in dwrite_cgo_windows.go.
+// The C bridge correctly receives float parameters from XMM registers on Windows x64.
 
 // goTR_DrawUnderline — no-op.
 func goTR_DrawUnderline(this, clientDrawingContext, baselineOriginX, baselineOriginY, underline, clientDrawingEffect uintptr) uintptr {
@@ -403,6 +363,13 @@ func (b *gdiInteropBackend) createBitmapTarget(width, height int) error {
 	b.bitmapTarget = target
 	b.width = width
 	b.height = height
+
+	// Force 1:1 pixel mapping — the node tree already scales font sizes
+	// from dp to physical pixels via ScaleNodeDPI, so we must prevent
+	// IDWriteBitmapRenderTarget from applying its own DPI scaling.
+	// IDWriteBitmapRenderTarget::SetPixelsPerDip (vtable index 6)
+	comCall(target, 6, uintptr(math.Float32bits(1.0)))
+
 	return nil
 }
 
@@ -743,26 +710,6 @@ func (tr *DWriteTextRenderer) MeasureText(text string) core.Size {
 	}
 }
 
-// GDI procs for text rendering (loaded lazily).
-var (
-	procCreateFontW  *syscall.LazyProc
-	procSetTextColor *syscall.LazyProc
-	procSetBkMode    *syscall.LazyProc
-	procExtTextOutW  *syscall.LazyProc
-	gdiTextProcsOnce sync.Once
-)
-
-func initGDITextProcs() {
-	gdiTextProcsOnce.Do(func() {
-		gdi := syscall.NewLazyDLL("gdi32.dll")
-		procCreateFontW = gdi.NewProc("CreateFontW")
-		procSetTextColor = gdi.NewProc("SetTextColor")
-		procSetBkMode = gdi.NewProc("SetBkMode")
-		procExtTextOutW = gdi.NewProc("ExtTextOutW")
-		// procSelectObject and procDeleteObject are already declared in window_windows.go
-	})
-}
-
 func (tr *DWriteTextRenderer) DrawText(canvas core.Canvas, text string, x, y float64, paint *core.Paint) {
 	if text == "" || canvas == nil {
 		return
@@ -774,8 +721,6 @@ func (tr *DWriteTextRenderer) DrawText(canvas core.Canvas, text string, x, y flo
 
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
-
-	initGDITextProcs()
 
 	// Lazily initialize GDI Interop backend (for bitmap target DC).
 	if tr.backend == nil {
@@ -793,7 +738,7 @@ func (tr *DWriteTextRenderer) DrawText(canvas core.Canvas, text string, x, y flo
 		clrG = paint.Color.G
 		clrB = paint.Color.B
 	}
-	_ = uint32(clrB)<<16 | uint32(clrG)<<8 | uint32(clrR) // colorRef for future DirectWrite rendering
+	colorRef := uint32(clrB)<<16 | uint32(clrG)<<8 | uint32(clrR)
 
 	// Measure text to determine bitmap size (DirectWrite measurement).
 	size := tr.measureTextLocked(text)
@@ -808,71 +753,46 @@ func (tr *DWriteTextRenderer) DrawText(canvas core.Canvas, text string, x, y flo
 		return
 	}
 
-	// Get the bitmap target's memory DC.
-	memDC, _ := comCall(tr.backend.bitmapTarget, 4) // GetMemoryDC
-	if memDC == 0 {
-		return
-	}
-
-	// Create a GDI font matching our DirectWrite settings.
-	// CreateFontW: height is negative for character height (not cell height).
-	fontHeight := -int32(math.Round(tr.fontSize))
-	weight := int32(tr.fontWeight)
-	if weight <= 0 {
-		weight = 400 // FW_NORMAL
-	}
-	fontFamily, _ := syscall.UTF16PtrFromString(tr.fontFamily)
-
-	hFont, _, _ := procCreateFontW.Call(
-		uintptr(fontHeight), // nHeight
-		0,                   // nWidth (0 = auto)
-		0,                   // nEscapement
-		0,                   // nOrientation
-		uintptr(weight),     // fnWeight
-		0,                   // fdwItalic
-		0,                   // fdwUnderline
-		0,                   // fdwStrikeOut
-		1,                   // fdwCharSet (DEFAULT_CHARSET)
-		0,                   // fdwOutputPrecision
-		0,                   // fdwClipPrecision
-		5,                   // fdwQuality (CLEARTYPE_QUALITY)
-		0,                   // fdwPitchAndFamily
-		uintptr(unsafe.Pointer(fontFamily)), // lpszFace
-	)
-	if hFont == 0 {
-		return
-	}
-	defer procDeleteObject.Call(hFont)
-
-	// Select font into DC, set text color and transparent background.
-	oldFont, _, _ := procSelectObject.Call(memDC, hFont)
-	defer procSelectObject.Call(memDC, oldFont)
-	// Always render WHITE text on the black bitmap to get coverage mask.
+	// Always render WHITE text on the black bitmap to get a coverage mask.
 	// compositeToCanvas uses max(R,G,B) as alpha and applies the actual
 	// text color (clrR, clrG, clrB) during compositing.
-	procSetTextColor.Call(memDC, 0x00FFFFFF) // white
-	procSetBkMode.Call(memDC, 1)            // TRANSPARENT
+	_ = colorRef
+	tr.backend.renderer.textColor = 0x00FFFFFF
 
-	// Render text with GDI ExtTextOutW (ClearType quality).
-	textUTF16, _ := syscall.UTF16FromString(text)
-	procExtTextOutW.Call(
-		memDC,
-		0, 0, // x, y position in bitmap
-		0,    // options
-		0,    // lpRect (NULL)
-		uintptr(unsafe.Pointer(&textUTF16[0])),
-		uintptr(len(textUTF16)-1), // character count (exclude null)
-		0,                          // lpDx (NULL)
+	// Create a text layout for rendering via DirectWrite.
+	layout, err := tr.createTextLayout(text, float64(bmpW), float64(bmpH))
+	if err != nil || layout == 0 {
+		return
+	}
+	defer comRelease(layout)
+
+	// Get baseline from line metrics for correct vertical positioning.
+	lineMetricsList, _ := getLineMetrics(layout)
+	var baselineY float32
+	if len(lineMetricsList) > 0 {
+		baselineY = lineMetricsList[0].Baseline
+	}
+
+	// Render text using IDWriteTextLayout::Draw (vtable index 58).
+	// This calls our goTextRenderer COM callback chain:
+	//   Draw() → DrawGlyphRun() (CGO trampoline) → IDWriteBitmapRenderTarget::DrawGlyphRun
+	// The renderer pointer is passed as the custom text renderer.
+	comCall(layout, 58,
+		0, // clientDrawingContext (unused)
+		uintptr(unsafe.Pointer(tr.backend.renderer)), // IDWriteTextRenderer*
+		uintptr(math.Float32bits(0)),                  // originX
+		uintptr(math.Float32bits(0)),                  // originY
 	)
+	_ = baselineY // baseline handled by DirectWrite layout internally
 
-	// Read pixels from the GDI bitmap.
+	// Read pixels from the DirectWrite bitmap.
 	pixels, stride, err := tr.backend.EndDraw()
 	if err != nil {
 		return
 	}
 
 	// Composite BGRA pixels onto the canvas RGBA image.
-	// GDI renders text with ClearType on black background.
+	// DirectWrite renders text on black background via IDWriteBitmapRenderTarget.
 	// Use max(R,G,B) as coverage alpha, apply requested text color.
 	compositeToCanvas(target, int(x), int(y), bmpW, bmpH, pixels, stride, clrR, clrG, clrB)
 }
