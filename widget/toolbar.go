@@ -248,7 +248,6 @@ func (h *toolbarHandler) hitTest(node *core.Node, x, y float64) int {
 		if localX >= xOffset-8 && localX < xOffset+navWidth && localY >= 0 && localY <= b.Height {
 			return -2
 		}
-		xOffset += navWidth + 8
 	}
 
 	// Check action items (right-aligned)

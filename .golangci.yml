@@ -1,0 +1,23 @@
+version: "2"
+
+linters:
+  disable:
+    - errcheck # Win32 syscall 返回值模式不适用标准 errcheck
+  settings:
+    govet:
+      # 本项目所有 unsafeptr 警告均来自 Win32/COM 互操作代码，
+      # 涉及的指针指向 Windows/COM 分配的非 Go 内存，GC 不会回收，无实际风险。
+      disable:
+        - unsafeptr
+    staticcheck:
+      checks:
+        - "all"
+        - "-QF1003" # if-else 转 switch 属代码风格偏好，不强制
+        - "-ST1003" # Id/ALL_CAPS 命名问题涉及公开 API 变更，后续专项迁移
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling

@@ -54,7 +54,6 @@ var (
 	procSetFocus        *syscall.LazyProc
 	procSetWindowLongPtrW *syscall.LazyProc
 	procCallWindowProcW   *syscall.LazyProc
-	procGetScrollInfo     *syscall.LazyProc
 	procGetKeyState       *syscall.LazyProc
 )
 
@@ -65,7 +64,6 @@ func initNativeEditProcs() {
 		procSetFocus = u32.NewProc("SetFocus")
 		procSetWindowLongPtrW = u32.NewProc("SetWindowLongPtrW")
 		procCallWindowProcW = u32.NewProc("CallWindowProcW")
-		procGetScrollInfo = u32.NewProc("GetScrollInfo")
 		procGetKeyState = u32.NewProc("GetKeyState")
 	})
 }

@@ -26,9 +26,6 @@ func NewMenu() *Menu {
 
 // Add appends a menu item.
 func (m *Menu) Add(item MenuItem) *Menu {
-	if item.Enabled == false && item.OnClick != nil {
-		// Default enabled to true if handler set but enabled wasn't explicit
-	}
 	m.items = append(m.items, item)
 	return m
 }

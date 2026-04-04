@@ -47,7 +47,7 @@ func TestCommandFindByShortcut(t *testing.T) {
 	})
 	cmd := cm.FindByShortcut(Key(67), ModCtrl)
 	if cmd == nil {
-		t.Error("should find command by shortcut")
+		t.Fatal("should find command by shortcut")
 	}
 	if cmd.ID != "test.copy" {
 		t.Errorf("expected test.copy, got %s", cmd.ID)

@@ -19,15 +19,11 @@ var (
 	colorBg         = "#F3F3F3"
 	colorSurface    = "#FFFFFF"
 	colorSidebar    = "#F3F3F3"
-	colorToolbar    = "#F3F3F3"
 	colorStatusBar  = "#F3F3F3"
 	colorDivider    = "#E5E5E5"
 	colorTextPri    = "#1A1A1A"
-	colorTextSec    = "#888888"
-	colorTextLight  = "#FFFFFF"
 	colorBtnNormal  = "#F3F3F3"
 	colorBtnActive  = "#D4E8FC"
-	colorAccent     = "#0078D4"
 	colorStatusText = "#888888"
 )
 
@@ -317,20 +313,6 @@ func (ui *managerUI) refreshList() {
 		ui.clipList.NotifyDataSetChanged()
 	}
 	ui.setStatus(fmt.Sprintf("共 %d 条记录", len(entries)))
-}
-
-func (ui *managerUI) refreshSidebar() {
-	if ui.sidebar == nil {
-		return
-	}
-	children := ui.sidebar.Children()
-	for len(children) > 3 {
-		ui.sidebar.RemoveChild(children[len(children)-1])
-		children = ui.sidebar.Children()
-	}
-	for _, cat := range ui.app.store.Categories() {
-		ui.sidebar.AddChild(ui.createSidebarButton(cat, cat).Node())
-	}
 }
 
 func (ui *managerUI) updateSidebarHighlight() {

@@ -57,7 +57,6 @@ var (
 	procGetDIBits        *syscall.LazyProc
 	procSetDIBits        *syscall.LazyProc
 	procGetCurrentObject *syscall.LazyProc
-	procPatBlt           *syscall.LazyProc
 )
 
 func initDWrite() error {
@@ -73,7 +72,6 @@ func initDWrite() error {
 		procGetDIBits = gdi.NewProc("GetDIBits")
 		procSetDIBits = gdi.NewProc("SetDIBits")
 		procGetCurrentObject = gdi.NewProc("GetCurrentObject")
-		procPatBlt = gdi.NewProc("PatBlt")
 	})
 	return dwriteInitErr
 }
@@ -123,19 +121,6 @@ type dwriteLineMetrics struct {
 	Height                   float32
 	Baseline                 float32
 	IsTrimmed                int32 // BOOL
-}
-
-// ---------- textDrawBackend abstraction ----------
-
-// textDrawBackend abstracts how text pixels are produced.
-// Current: GDI Interop. Future: D2D/D3D.
-type textDrawBackend interface {
-	Init(factory uintptr) error
-	BeginDraw(width, height int) error
-	DrawGlyphRun(baselineOriginX, baselineOriginY float32, measuringMode uint32,
-		glyphRun uintptr, glyphRunDesc uintptr, textColor uint32) error
-	EndDraw() (pixels []byte, stride int, err error) // returns BGRA pixel data
-	Close()
 }
 
 // ---------- GDI Interop backend ----------

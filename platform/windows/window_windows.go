@@ -85,7 +85,6 @@ var (
 	procPostMessageW      = user32.NewProc("PostMessageW")
 	procPostQuitMessage   = user32.NewProc("PostQuitMessage")
 	procGetClientRect     = user32.NewProc("GetClientRect")
-	procInvalidateRect    = user32.NewProc("InvalidateRect")
 	procBeginPaint        = user32.NewProc("BeginPaint")
 	procEndPaint          = user32.NewProc("EndPaint")
 	procGetDC             = user32.NewProc("GetDC")
@@ -98,9 +97,7 @@ var (
 	procGetForegroundWindow = user32.NewProc("GetForegroundWindow")
 	procIsWindowVisible   = user32.NewProc("IsWindowVisible")
 	procGetWindowRect     = user32.NewProc("GetWindowRect")
-	procGetWindowLongW    = user32.NewProc("GetWindowLongW")
 	procScreenToClient    = user32.NewProc("ScreenToClient")
-	procIsDialogMessageW  = user32.NewProc("IsDialogMessageW")
 
 	procCreateCompatibleDC = gdi32.NewProc("CreateCompatibleDC")
 	procCreateDIBSection   = gdi32.NewProc("CreateDIBSection")
@@ -184,7 +181,7 @@ var windowMap sync.Map
 
 // classRegistered tracks whether the window class has been registered.
 var classRegistered bool
-var className = syscall.StringToUTF16Ptr("WindUIWindowClass")
+var className, _ = syscall.UTF16PtrFromString("WindUIWindowClass")
 
 // win32Window implements platform.Window for Windows.
 type win32Window struct {
@@ -310,7 +307,7 @@ func newWin32Window(plat *WindowsPlatform, opts platform.WindowOptions) (*win32W
 	width = int(DpToPx(float64(width), sysDPI))
 	height = int(DpToPx(float64(height), sysDPI))
 
-	title := syscall.StringToUTF16Ptr(opts.Title)
+	title, _ := syscall.UTF16PtrFromString(opts.Title)
 
 	hwnd, _, err := procCreateWindowExW.Call(
 		exStyle,
@@ -580,7 +577,7 @@ func (w *win32Window) SetContentView(root *core.Node) {
 }
 
 func (w *win32Window) SetTitle(title string) {
-	t := syscall.StringToUTF16Ptr(title)
+	t, _ := syscall.UTF16PtrFromString(title)
 	procSetWindowTextW.Call(w.hwnd, uintptr(unsafe.Pointer(t)))
 }
 

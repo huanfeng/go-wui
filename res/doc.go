@@ -1,7 +1,7 @@
 // Package res provides the resource management system for Wind UI.
 //
 // It handles loading, caching, and resolving resources from multiple sources:
-// go:embed filesystems, override directories, and locale-specific variants.
+// embedded filesystems (go:embed), override directories, and locale-specific variants
 //
 // # ResourceManager
 //

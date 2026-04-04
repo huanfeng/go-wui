@@ -14,8 +14,6 @@ import (
 	"github.com/huanfeng/wind-ui/widget"
 )
 
-var globalWindow platform.Window
-
 func main() {
 	application := app.NewApplication()
 
@@ -28,8 +26,6 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("failed to create window: %v", err))
 	}
-	globalWindow = window
-
 	root := buildUI(window)
 	window.SetContentView(root)
 	window.Center()

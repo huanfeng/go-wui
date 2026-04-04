@@ -138,12 +138,3 @@ func (p *clipItemPainter) Paint(node *core.Node, canvas core.Canvas) {
 		canvas.DrawText("★", pinX, pinY, pinPaint)
 	}
 }
-
-func getDPIScaleFromNode(node *core.Node) float64 {
-	for n := node; n != nil; n = n.Parent() {
-		if s, ok := n.GetData("dpiScale").(float64); ok && s > 0 {
-			return s
-		}
-	}
-	return 1.0
-}

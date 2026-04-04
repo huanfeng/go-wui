@@ -33,8 +33,6 @@ var (
 	procGlobalLock   = kernel32.NewProc("GlobalLock")
 	procGlobalUnlock = kernel32.NewProc("GlobalUnlock")
 	procGlobalAlloc  = kernel32.NewProc("GlobalAlloc")
-	procGlobalSize   = kernel32.NewProc("GlobalSize")
-	procLstrcpyW     = kernel32.NewProc("lstrcpyW")
 
 	procGetWindowTextW       = user32.NewProc("GetWindowTextW")
 	procGetWindowTextLengthW = user32.NewProc("GetWindowTextLengthW")

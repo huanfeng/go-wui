@@ -96,15 +96,6 @@ func (tl *TabLayout) SetOnTabSelectedListener(fn func(index int)) {
 	tl.onSelected = fn
 }
 
-// tabWidth returns the width of each tab (equal distribution).
-func (tl *TabLayout) tabWidth() float64 {
-	if len(tl.tabs) == 0 {
-		return 0
-	}
-	b := tl.node.Bounds()
-	return b.Width / float64(len(tl.tabs))
-}
-
 // ---------- tabLayoutPainter ----------
 
 type tabLayoutPainter struct {

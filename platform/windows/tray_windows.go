@@ -71,7 +71,6 @@ var (
 	procTrackPopupMenu   = user32.NewProc("TrackPopupMenu")
 	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
 	procGetCursorPos     = user32.NewProc("GetCursorPos")
-	procLoadImageW       = user32.NewProc("LoadImageW")
 	procCreateIconFromResourceEx = user32.NewProc("CreateIconFromResourceEx")
 	procDestroyIcon      = user32.NewProc("DestroyIcon")
 	procLoadIconW        = user32.NewProc("LoadIconW")
