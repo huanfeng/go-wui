@@ -2,7 +2,7 @@ package app
 
 import "github.com/huanfeng/wind-ui/core"
 
-// PaintNode recursively paints a node tree onto a canvas.
+// PaintNode recursively paints a node tree onto a canvas (full repaint path).
 // It respects visibility, applies translation for each node's bounds,
 // delegates to the node's Painter, and recurses into children.
 //
@@ -38,3 +38,4 @@ func PaintNode(node *core.Node, canvas core.Canvas) {
 	}
 	canvas.Restore()
 }
+

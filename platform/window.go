@@ -44,6 +44,8 @@ type Window interface {
 	NativeHandle() uintptr
 	Invalidate()
 	InvalidateRect(rect core.Rect)
+	StartAnimator(anim *core.ValueAnimator)
+	RequestFrame()
 }
 
 // NativeEditText wraps a platform-native text input control.

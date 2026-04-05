@@ -32,6 +32,26 @@ func (r Rect) Intersect(other Rect) Rect {
 	return Rect{X: x1, Y: y1, Width: w, Height: h}
 }
 
+// IsEmpty reports whether the rectangle has zero or negative area.
+func (r Rect) IsEmpty() bool {
+	return r.Width <= 0 || r.Height <= 0
+}
+
+// Overlaps reports whether two rectangles have any non-zero overlap.
+func (r Rect) Overlaps(other Rect) bool {
+	return r.X < other.X+other.Width && r.X+r.Width > other.X &&
+		r.Y < other.Y+other.Height && r.Y+r.Height > other.Y
+}
+
+// Union returns the smallest rectangle containing both r and other.
+func (r Rect) Union(other Rect) Rect {
+	x1 := min(r.X, other.X)
+	y1 := min(r.Y, other.Y)
+	x2 := max(r.X+r.Width, other.X+other.Width)
+	y2 := max(r.Y+r.Height, other.Y+other.Height)
+	return Rect{X: x1, Y: y1, Width: x2 - x1, Height: y2 - y1}
+}
+
 // ApplyInsets returns a new Rect shrunk by the given insets.
 func (r Rect) ApplyInsets(insets Insets) Rect {
 	return Rect{

@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/huanfeng/wind-ui/core"
@@ -37,6 +38,7 @@ const (
 	WM_MOUSEWHEEL  = 0x020A
 	WM_DPICHANGED  = 0x02E0
 	WM_USER        = 0x0400
+	WM_TIMER       = 0x0113
 	WM_APP_PAINT   = WM_USER + 1
 
 	CS_HREDRAW    = 0x0002
@@ -98,6 +100,8 @@ var (
 	procIsWindowVisible   = user32.NewProc("IsWindowVisible")
 	procGetWindowRect     = user32.NewProc("GetWindowRect")
 	procScreenToClient    = user32.NewProc("ScreenToClient")
+	procSetTimer          = user32.NewProc("SetTimer")
+	procKillTimer         = user32.NewProc("KillTimer")
 
 	procCreateCompatibleDC = gdi32.NewProc("CreateCompatibleDC")
 	procCreateDIBSection   = gdi32.NewProc("CreateDIBSection")
@@ -209,6 +213,11 @@ type win32Window struct {
 	dibBits     unsafe.Pointer  // pointer to DIB pixel data
 	dibWidth    int             // cached DIB width
 	dibHeight   int             // cached DIB height
+
+	// Animation frame loop (~60fps when active, stopped when idle).
+	animTimerID   uintptr
+	animators     []*core.ValueAnimator
+	lastFrameTime time.Time
 
 	mu sync.Mutex
 }
@@ -416,6 +425,10 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case WM_APP_PAINT:
 		w.render()
+		return 0
+
+	case WM_TIMER:
+		w.tickAnimations()
 		return 0
 
 	case WM_ERASEBKGND:
@@ -699,6 +712,71 @@ func (w *win32Window) InvalidateRect(rect core.Rect) {
 	w.Invalidate()
 }
 
+// StartAnimator registers an animation with the window's frame loop.
+// The animation is automatically ticked at ~60fps and removed when complete.
+func (w *win32Window) StartAnimator(anim *core.ValueAnimator) {
+	if anim == nil {
+		return
+	}
+	anim.Start()
+	w.animators = append(w.animators, anim)
+	w.ensureFrameTimer()
+}
+
+// RequestFrame ensures at least one more frame tick will occur.
+func (w *win32Window) RequestFrame() {
+	w.ensureFrameTimer()
+}
+
+// ensureFrameTimer starts the ~60fps WM_TIMER if not already running.
+func (w *win32Window) ensureFrameTimer() {
+	if w.animTimerID != 0 {
+		return
+	}
+	// SetTimer(hwnd, nIDEvent=1, uElapse=16ms, lpTimerFunc=NULL)
+	ret, _, _ := procSetTimer.Call(w.hwnd, 1, 16, 0)
+	if ret != 0 {
+		w.animTimerID = ret
+		w.lastFrameTime = time.Now()
+	}
+}
+
+// stopFrameTimer stops the animation timer.
+func (w *win32Window) stopFrameTimer() {
+	if w.animTimerID != 0 {
+		procKillTimer.Call(w.hwnd, 1)
+		w.animTimerID = 0
+	}
+}
+
+// tickAnimations advances all active animators and triggers repaint.
+func (w *win32Window) tickAnimations() {
+	now := time.Now()
+	elapsed := now.Sub(w.lastFrameTime)
+	w.lastFrameTime = now
+
+	anyRunning := false
+	n := 0
+	for _, anim := range w.animators {
+		if anim.Tick(elapsed) {
+			w.animators[n] = anim
+			n++
+			anyRunning = true
+		}
+	}
+	for i := n; i < len(w.animators); i++ {
+		w.animators[i] = nil
+	}
+	w.animators = w.animators[:n]
+
+	if !anyRunning {
+		w.stopFrameTimer()
+	}
+
+	// Animation callbacks call node.Invalidate() which registers dirty rects.
+	w.render()
+}
+
 // ---------- Render pipeline ----------
 
 func (w *win32Window) render() {
@@ -722,8 +800,6 @@ func (w *win32Window) render() {
 	}
 
 	// Scale dp values in the node tree to physical pixels (once).
-	// Uses core.ScaleNodeDPI which marks nodes as scaled, so dynamically
-	// added children via AddChild will also be auto-scaled.
 	if !w.dpiScaled {
 		core.ScaleNodeDPI(contentView, w.dpiScale)
 		w.dpiScaled = true
@@ -734,38 +810,52 @@ func (w *win32Window) render() {
 		w.textRenderer = w.plat.CreateTextRenderer()
 	}
 
-	// Reuse the canvas backing image if the window size hasn't changed.
-	// Only the lightweight gg.Context is recreated; the large pixel buffer
-	// (~width*height*4 bytes) is kept across frames.
-	var canvas *gg.GGCanvas
-	if w.cachedImage != nil &&
-		w.cachedImage.Bounds().Dx() == width &&
-		w.cachedImage.Bounds().Dy() == height {
-		canvas = gg.NewGGCanvasForImage(w.cachedImage, w.textRenderer)
-	} else {
-		fmt.Printf("[WindUI] canvas resized: %dx%d (%.1f MB RGBA)\n",
-			width, height, float64(width*height*4)/(1024*1024))
-		canvas = gg.NewGGCanvas(width, height, w.textRenderer)
-		w.cachedImage = canvas.Target()
+	root := contentView
+
+	// Determine if we need full or partial repaint.
+	sizeChanged := w.cachedImage == nil ||
+		w.cachedImage.Bounds().Dx() != width ||
+		w.cachedImage.Bounds().Dy() != height
+
+	dirtyRects, dirtyFull := root.PopDirtyRegion()
+	fullRepaint := dirtyFull || sizeChanged
+
+	// No dirty regions and no size change — skip rendering entirely.
+	if !fullRepaint && len(dirtyRects) == 0 {
+		return
 	}
 
-	// Measure
-	root := contentView
+	// Measure + Arrange always run fully (layout changes can cascade).
 	widthSpec := core.MeasureSpec{Mode: core.MeasureModeExact, Size: float64(width)}
 	heightSpec := core.MeasureSpec{Mode: core.MeasureModeExact, Size: float64(height)}
 	layout.MeasureChild(root, widthSpec, heightSpec)
-
-	// Arrange
 	if l := root.GetLayout(); l != nil {
 		l.Arrange(root, core.Rect{Width: float64(width), Height: float64(height)})
 	}
 	root.SetBounds(core.Rect{Width: float64(width), Height: float64(height)})
 
-	// Paint
-	PaintNode(root, canvas)
-
-	// Present: BitBlt canvas to window
-	w.present(canvas.Target())
+	if fullRepaint {
+		// --- Full repaint path (resize, first frame, large dirty area) ---
+		var canvas *gg.GGCanvas
+		if sizeChanged {
+			fmt.Printf("[WindUI] canvas resized: %dx%d (%.1f MB RGBA)\n",
+				width, height, float64(width*height*4)/(1024*1024))
+			canvas = gg.NewGGCanvas(width, height, w.textRenderer)
+			w.cachedImage = canvas.Target()
+		} else {
+			canvas = gg.NewGGCanvasForImage(w.cachedImage, w.textRenderer)
+		}
+		PaintNode(root, canvas)
+		w.present(canvas.Target())
+	} else {
+		// --- Partial repaint path (dirty regions only) ---
+		canvas := gg.NewGGCanvasRetained(w.cachedImage, w.textRenderer)
+		for _, r := range dirtyRects {
+			canvas.ClearRect(r)
+		}
+		PaintNodeDirty(root, canvas, dirtyRects, 0, 0)
+		w.presentDirty(canvas.Target(), dirtyRects)
+	}
 }
 
 // rescaleNodeTree re-scales all nodes by a ratio (newDPI/oldDPI) when the
@@ -845,6 +935,51 @@ func PaintNode(node *core.Node, canvas core.Canvas) {
 	canvas.Restore()
 }
 
+// PaintNodeDirty selectively paints only nodes intersecting the dirty regions.
+func PaintNodeDirty(node *core.Node, canvas core.Canvas, dirtyRects []core.Rect, ox, oy float64) {
+	if node.GetVisibility() != core.Visible {
+		return
+	}
+
+	b := node.Bounds()
+	absRect := core.Rect{X: ox + b.X, Y: oy + b.Y, Width: b.Width, Height: b.Height}
+
+	// Skip entire subtree if clean or outside all dirty regions.
+	if !node.IsDirty() && !node.IsChildDirty() {
+		return
+	}
+	if !rectIntersectsAny(absRect, dirtyRects) {
+		return
+	}
+
+	canvas.Save()
+	canvas.Translate(b.X, b.Y)
+
+	if p := node.GetPainter(); p != nil {
+		p.Paint(node, canvas)
+	}
+
+	if node.GetData("paintsChildren") == nil {
+		childOX, childOY := ox+b.X, oy+b.Y
+		for _, child := range node.Children() {
+			PaintNodeDirty(child, canvas, dirtyRects, childOX, childOY)
+		}
+	}
+
+	canvas.Restore()
+	node.ClearDirty()
+}
+
+// rectIntersectsAny reports whether rect overlaps with any of the dirty rects.
+func rectIntersectsAny(rect core.Rect, dirtyRects []core.Rect) bool {
+	for _, dr := range dirtyRects {
+		if rect.Overlaps(dr) {
+			return true
+		}
+	}
+	return false
+}
+
 // present copies the RGBA image to the window using GDI.
 // The memory DC and DIB section are cached and reused across frames;
 // they are only recreated when the window size changes.
@@ -908,27 +1043,9 @@ func (w *win32Window) present(img *image.RGBA) {
 		w.dibHeight = height
 	}
 
-	// Copy pixels with RGBA -> BGRA conversion
-	pix := img.Pix
-	stride := img.Stride
-	dibStride := width * 4
+	// Full-frame RGBA -> BGRA copy + BitBlt
+	copyRGBAtoBGRA(img, w.dibBits, w.dibWidth, 0, 0, width, height)
 
-	dst := unsafe.Slice((*byte)(w.dibBits), height*dibStride)
-	for y := 0; y < height; y++ {
-		srcOff := y * stride
-		dstOff := y * dibStride
-		for x := 0; x < width; x++ {
-			si := srcOff + x*4
-			di := dstOff + x*4
-			// RGBA -> BGRA: swap R and B
-			dst[di+0] = pix[si+2] // B
-			dst[di+1] = pix[si+1] // G
-			dst[di+2] = pix[si+0] // R
-			dst[di+3] = pix[si+3] // A
-		}
-	}
-
-	// BitBlt to window
 	procBitBlt.Call(
 		hdc,
 		0, 0,
@@ -937,6 +1054,67 @@ func (w *win32Window) present(img *image.RGBA) {
 		0, 0,
 		SRCCOPY,
 	)
+}
+
+// presentDirty copies only the dirty rectangles from the RGBA image to the
+// window, avoiding a full-frame pixel copy and BitBlt.
+func (w *win32Window) presentDirty(img *image.RGBA, dirtyRects []core.Rect) {
+	if img == nil || w.dibBits == nil {
+		// Fallback to full present if DIB not ready.
+		w.present(img)
+		return
+	}
+
+	hdc, _, _ := procGetDC.Call(w.hwnd)
+	if hdc == 0 {
+		return
+	}
+	defer procReleaseDC.Call(w.hwnd, hdc)
+
+	for _, r := range dirtyRects {
+		x0 := max(int(r.X), 0)
+		y0 := max(int(r.Y), 0)
+		x1 := min(int(r.X+r.Width+0.5), w.dibWidth)
+		y1 := min(int(r.Y+r.Height+0.5), w.dibHeight)
+		if x0 >= x1 || y0 >= y1 {
+			continue
+		}
+
+		copyRGBAtoBGRA(img, w.dibBits, w.dibWidth, x0, y0, x1, y1)
+
+		rw := x1 - x0
+		rh := y1 - y0
+		procBitBlt.Call(
+			hdc,
+			uintptr(x0), uintptr(y0),
+			uintptr(rw), uintptr(rh),
+			w.dibMemDC,
+			uintptr(x0), uintptr(y0),
+			SRCCOPY,
+		)
+	}
+}
+
+// copyRGBAtoBGRA copies a rectangular region from an RGBA image to a BGRA
+// DIB buffer, swapping R and B channels.
+func copyRGBAtoBGRA(src *image.RGBA, dibBits unsafe.Pointer, dibW, x0, y0, x1, y1 int) {
+	pix := src.Pix
+	stride := src.Stride
+	dibStride := dibW * 4
+	dst := unsafe.Slice((*byte)(dibBits), dibW*src.Bounds().Dy()*4)
+
+	for y := y0; y < y1; y++ {
+		srcOff := y*stride + x0*4
+		dstOff := y*dibStride + x0*4
+		for x := x0; x < x1; x++ {
+			si := srcOff + (x-x0)*4
+			di := dstOff + (x-x0)*4
+			dst[di+0] = pix[si+2] // B
+			dst[di+1] = pix[si+1] // G
+			dst[di+2] = pix[si+0] // R
+			dst[di+3] = pix[si+3] // A
+		}
+	}
 }
 
 // releaseCachedDIB frees the cached GDI resources (memory DC + DIB section).

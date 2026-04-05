@@ -41,6 +41,10 @@ type Node struct {
 	dirty      bool
 	childDirty bool
 
+	// Dirty region tracking (only used on root node).
+	dirtyRects []Rect
+	dirtyFull  bool // true = degrade to full repaint
+
 	// View association — the widget wrapping this node
 	view View
 
@@ -294,16 +298,86 @@ func (n *Node) GetView() View {
 
 // ---------- Dirty tracking ----------
 
-// MarkDirty marks this node as dirty and bubbles childDirty up to all ancestors.
+// maxDirtyRects is the upper limit of dirty rectangles tracked on the root
+// node before degrading to a full repaint.
+const maxDirtyRects = 8
+
+// MarkDirty marks this node as dirty and registers its dirty region.
+// This is the primary API called by widgets — it delegates to Invalidate().
 func (n *Node) MarkDirty() {
+	n.Invalidate()
+}
+
+// Invalidate marks the entire node as dirty and propagates its screen-space
+// bounding rectangle up the parent chain to the root node (Android-style
+// invalidateChild pattern).
+func (n *Node) Invalidate() {
 	n.dirty = true
-	// Bubble childDirty up to ancestors
-	for p := n.parent; p != nil; p = p.parent {
-		if p.childDirty {
-			break // Already marked — ancestors above are also marked
+	b := n.bounds
+	n.InvalidateRect(Rect{Width: b.Width, Height: b.Height})
+}
+
+// InvalidateRect marks a local-coordinate rectangle as dirty and bubbles it
+// up the parent chain, transforming coordinates at each level.
+func (n *Node) InvalidateRect(localRect Rect) {
+	n.dirty = true
+
+	// Bubble childDirty + transform rect up to root.
+	rect := localRect
+	current := n
+	for p := current.parent; p != nil; current, p = p, p.parent {
+		cb := current.bounds
+		rect.X += cb.X
+		rect.Y += cb.Y
+		if !p.childDirty {
+			p.childDirty = true
 		}
-		p.childDirty = true
 	}
+	// current is now the root node; rect is in screen coordinates.
+	current.addDirtyRect(rect)
+}
+
+// addDirtyRect adds a screen-coordinate dirty rectangle to the root node's
+// dirty region, merging overlapping rectangles.
+func (n *Node) addDirtyRect(rect Rect) {
+	if rect.IsEmpty() {
+		return
+	}
+	if n.dirtyFull {
+		return // already full repaint
+	}
+
+	// Try to merge with an existing overlapping rect.
+	for i, existing := range n.dirtyRects {
+		if existing.Overlaps(rect) {
+			n.dirtyRects[i] = existing.Union(rect)
+			return
+		}
+	}
+
+	n.dirtyRects = append(n.dirtyRects, rect)
+
+	// Too many rects — degrade to full repaint.
+	if len(n.dirtyRects) > maxDirtyRects {
+		n.dirtyFull = true
+		n.dirtyRects = nil
+	}
+}
+
+// PopDirtyRegion returns the accumulated dirty rectangles and resets the
+// dirty region state. Called by the render loop at the start of each frame.
+func (n *Node) PopDirtyRegion() (rects []Rect, fullDirty bool) {
+	rects = n.dirtyRects
+	fullDirty = n.dirtyFull
+	n.dirtyRects = nil
+	n.dirtyFull = false
+	return
+}
+
+// SetFullDirty forces the next frame to be a full repaint (e.g. after resize).
+func (n *Node) SetFullDirty() {
+	n.dirtyFull = true
+	n.dirtyRects = nil
 }
 
 // IsDirty reports whether this node itself is dirty.

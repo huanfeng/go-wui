@@ -68,6 +68,42 @@ func NewGGCanvasForImage(img *image.RGBA, textRenderer core.TextRenderer) *GGCan
 	}
 }
 
+// NewGGCanvasRetained creates a GGCanvas backed by an existing *image.RGBA
+// WITHOUT clearing the pixels. The previous frame's content is preserved,
+// allowing partial redraws of only the dirty regions.
+func NewGGCanvasRetained(img *image.RGBA, textRenderer core.TextRenderer) *GGCanvas {
+	bounds := img.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	dc := foggg.NewContextForRGBA(img)
+	return &GGCanvas{
+		dc:           dc,
+		textRenderer: textRenderer,
+		width:        w,
+		height:       h,
+		clip:         clipRect{x1: 0, y1: 0, x2: float64(w), y2: float64(h), active: false},
+	}
+}
+
+// ClearRect zeroes the pixels within the given rectangle, preparing it
+// for a fresh repaint while leaving the rest of the canvas untouched.
+func (c *GGCanvas) ClearRect(rect core.Rect) {
+	target := c.targetRGBA()
+	if target == nil {
+		return
+	}
+	bounds := target.Bounds()
+	x0 := max(int(rect.X), bounds.Min.X)
+	y0 := max(int(rect.Y), bounds.Min.Y)
+	x1 := min(int(rect.X+rect.Width+0.5), bounds.Max.X)
+	y1 := min(int(rect.Y+rect.Height+0.5), bounds.Max.Y)
+
+	for y := y0; y < y1; y++ {
+		off := (y-bounds.Min.Y)*target.Stride + (x0-bounds.Min.X)*4
+		end := (y-bounds.Min.Y)*target.Stride + (x1-bounds.Min.X)*4
+		clear(target.Pix[off:end])
+	}
+}
+
 // ---------- Drawing primitives ----------
 
 // DrawRect draws a filled or stroked rectangle.
