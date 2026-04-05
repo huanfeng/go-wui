@@ -5,7 +5,7 @@ import (
 	"image/color"
 	"image/draw"
 
-	foggg "github.com/fogleman/gg"
+	foggg "github.com/gogpu/gg"
 
 	"github.com/huanfeng/wind-ui/core"
 )
@@ -34,6 +34,9 @@ type GGCanvas struct {
 	// draws that are entirely outside the clip without invoking gg at all.
 	clip      clipRect
 	clipStack []clipRect
+
+	// Shared RGBA view over gg's internal Pixmap data — avoids copies.
+	sharedTarget *image.RGBA
 }
 
 type point2 struct{ x, y float64 }
@@ -51,14 +54,14 @@ func NewGGCanvas(width, height int, textRenderer core.TextRenderer) *GGCanvas {
 	}
 }
 
-// NewGGCanvasForImage creates a GGCanvas backed by an existing *image.RGBA.
-// The image pixels are cleared to transparent. This avoids re-allocating the
-// large backing buffer each frame — only a lightweight gg.Context is created.
+// NewGGCanvasForImage creates a GGCanvas with a fresh cleared context at the
+// same dimensions as img. The img parameter is only used for sizing — gogpu/gg
+// contexts own their pixel buffer internally. Call Target() to get the canvas
+// result as *image.RGBA.
 func NewGGCanvasForImage(img *image.RGBA, textRenderer core.TextRenderer) *GGCanvas {
-	clear(img.Pix)
 	bounds := img.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
-	dc := foggg.NewContextForRGBA(img)
+	dc := foggg.NewContext(w, h) // fresh cleared context
 	return &GGCanvas{
 		dc:           dc,
 		textRenderer: textRenderer,
@@ -68,13 +71,13 @@ func NewGGCanvasForImage(img *image.RGBA, textRenderer core.TextRenderer) *GGCan
 	}
 }
 
-// NewGGCanvasRetained creates a GGCanvas backed by an existing *image.RGBA
-// WITHOUT clearing the pixels. The previous frame's content is preserved,
-// allowing partial redraws of only the dirty regions.
+// NewGGCanvasRetained creates a GGCanvas pre-populated with the pixels from
+// img (previous frame). Only dirty regions are cleared and repainted, while
+// the rest of the frame is preserved.
 func NewGGCanvasRetained(img *image.RGBA, textRenderer core.TextRenderer) *GGCanvas {
 	bounds := img.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
-	dc := foggg.NewContextForRGBA(img)
+	dc := foggg.NewContextForImage(img) // imports previous frame pixels
 	return &GGCanvas{
 		dc:           dc,
 		textRenderer: textRenderer,
@@ -426,17 +429,23 @@ func (c *GGCanvas) clipLocalRect(rect core.Rect) core.Rect {
 
 // ---------- Internal helpers ----------
 
-// targetRGBA returns the gg context's image as *image.RGBA.
+// targetRGBA returns an *image.RGBA that shares the same underlying pixel
+// memory as the gg context's internal Pixmap. This allows direct pixel
+// manipulation (text rendering, image compositing) to coexist with gg's
+// vector drawing on the same buffer without copies.
 func (c *GGCanvas) targetRGBA() *image.RGBA {
-	img := c.dc.Image()
-	if rgba, ok := img.(*image.RGBA); ok {
-		return rgba
+	if c.sharedTarget != nil {
+		return c.sharedTarget
 	}
-	// Fallback: copy into a new RGBA image.
-	bounds := img.Bounds()
-	rgba := image.NewRGBA(bounds)
-	draw.Draw(rgba, bounds, img, bounds.Min, draw.Src)
-	return rgba
+	pm := c.dc.ResizeTarget()
+	data := pm.Data()
+	w, h := pm.Width(), pm.Height()
+	c.sharedTarget = &image.RGBA{
+		Pix:    data,
+		Stride: w * 4,
+		Rect:   image.Rect(0, 0, w, h),
+	}
+	return c.sharedTarget
 }
 
 // applyPaint applies fill/stroke based on the paint style.

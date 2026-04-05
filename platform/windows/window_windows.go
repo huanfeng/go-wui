@@ -845,12 +845,12 @@ func (w *win32Window) render() {
 			fmt.Printf("[WindUI] canvas resized: %dx%d (%.1f MB RGBA)\n",
 				width, height, float64(width*height*4)/(1024*1024))
 			canvas = gg.NewGGCanvas(width, height, w.textRenderer)
-			w.cachedImage = canvas.Target()
 		} else {
 			canvas = gg.NewGGCanvasForImage(w.cachedImage, w.textRenderer)
 		}
 		PaintNode(root, canvas)
-		w.present(canvas.Target())
+		w.cachedImage = canvas.Target()
+		w.present(w.cachedImage)
 	} else {
 		// --- Partial repaint path (dirty regions only) ---
 		canvas := gg.NewGGCanvasRetained(w.cachedImage, w.textRenderer)
@@ -858,7 +858,8 @@ func (w *win32Window) render() {
 			canvas.ClearRect(r)
 		}
 		PaintNodeDirty(root, canvas, dirtyRects, 0, 0)
-		w.presentDirty(canvas.Target(), dirtyRects)
+		w.cachedImage = canvas.Target()
+		w.presentDirty(w.cachedImage, dirtyRects)
 	}
 }
 

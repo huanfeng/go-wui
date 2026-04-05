@@ -3,8 +3,13 @@ module github.com/huanfeng/wind-ui
 go 1.26.1
 
 require (
-	github.com/fogleman/gg v1.3.0
-	golang.org/x/image v0.37.0
+	github.com/gogpu/gg v0.39.0
+	golang.org/x/image v0.38.0
 )
 
-require github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
+require (
+	github.com/go-text/typesetting v0.3.4 // indirect
+	github.com/gogpu/gpucontext v0.11.0 // indirect
+	github.com/gogpu/gputypes v0.4.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
+)

@@ -1,4 +1,4 @@
-// Package gg implements the core.Canvas interface using the fogleman/gg
+// Package gg implements the core.Canvas interface using the gogpu/gg
 // 2D graphics library.
 //
 // GGCanvas provides anti-aliased vector drawing (rectangles, rounded
