@@ -939,7 +939,11 @@ func PaintNode(node *core.Node, canvas core.Canvas) {
 	canvas.Restore()
 }
 
-// PaintNodeDirty selectively paints only nodes intersecting the dirty regions.
+// PaintNodeDirty repaints all visible nodes that spatially intersect the dirty
+// regions. The dirty flags (IsDirty/IsChildDirty) are NOT used for culling —
+// every node overlapping a dirty rect must be repainted because something else
+// in that area may have changed (e.g. a dialog closed, revealing background).
+// Culling is purely spatial: nodes entirely outside all dirty rects are skipped.
 func PaintNodeDirty(node *core.Node, canvas core.Canvas, dirtyRects []core.Rect, ox, oy float64) {
 	if node.GetVisibility() != core.Visible {
 		return
@@ -948,10 +952,7 @@ func PaintNodeDirty(node *core.Node, canvas core.Canvas, dirtyRects []core.Rect,
 	b := node.Bounds()
 	absRect := core.Rect{X: ox + b.X, Y: oy + b.Y, Width: b.Width, Height: b.Height}
 
-	// Skip entire subtree if clean or outside all dirty regions.
-	if !node.IsDirty() && !node.IsChildDirty() {
-		return
-	}
+	// Spatial culling: skip subtree if entirely outside all dirty rects.
 	if !rectIntersectsAny(absRect, dirtyRects) {
 		return
 	}
@@ -965,8 +966,19 @@ func PaintNodeDirty(node *core.Node, canvas core.Canvas, dirtyRects []core.Rect,
 
 	if node.GetData("paintsChildren") == nil {
 		childOX, childOY := ox+b.X, oy+b.Y
+		var overlays []*core.Node
 		for _, child := range node.Children() {
+			if child.GetData("isOverlay") != nil {
+				overlays = append(overlays, child)
+				continue
+			}
 			PaintNodeDirty(child, canvas, dirtyRects, childOX, childOY)
+		}
+		// Paint overlays last, at full parent bounds (on top of all content).
+		for _, overlay := range overlays {
+			overlay.SetBounds(core.Rect{X: 0, Y: 0, Width: b.Width, Height: b.Height})
+			overlay.SetMeasuredSize(core.Size{Width: b.Width, Height: b.Height})
+			PaintNodeDirty(overlay, canvas, dirtyRects, childOX, childOY)
 		}
 	}
 
