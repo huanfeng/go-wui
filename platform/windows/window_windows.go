@@ -825,14 +825,18 @@ func (w *win32Window) render() {
 		return
 	}
 
-	// Measure + Arrange always run fully (layout changes can cascade).
-	widthSpec := core.MeasureSpec{Mode: core.MeasureModeExact, Size: float64(width)}
-	heightSpec := core.MeasureSpec{Mode: core.MeasureModeExact, Size: float64(height)}
-	layout.MeasureChild(root, widthSpec, heightSpec)
-	if l := root.GetLayout(); l != nil {
-		l.Arrange(root, core.Rect{Width: float64(width), Height: float64(height)})
+	// Layout pass: only run Measure + Arrange if layout is dirty
+	// (structural/sizing changes). Pure visual changes (hover, color) skip this.
+	if fullRepaint || root.IsLayoutDirty() {
+		widthSpec := core.MeasureSpec{Mode: core.MeasureModeExact, Size: float64(width)}
+		heightSpec := core.MeasureSpec{Mode: core.MeasureModeExact, Size: float64(height)}
+		layout.MeasureChild(root, widthSpec, heightSpec)
+		if l := root.GetLayout(); l != nil {
+			l.Arrange(root, core.Rect{Width: float64(width), Height: float64(height)})
+		}
+		root.SetBounds(core.Rect{Width: float64(width), Height: float64(height)})
+		clearLayoutDirty(root)
 	}
-	root.SetBounds(core.Rect{Width: float64(width), Height: float64(height)})
 
 	if fullRepaint {
 		// --- Full repaint path (resize, first frame, large dirty area) ---
@@ -970,6 +974,16 @@ func PaintNodeDirty(node *core.Node, canvas core.Canvas, dirtyRects []core.Rect,
 	node.ClearDirty()
 }
 
+// clearLayoutDirty recursively clears layoutDirty flags after a layout pass.
+func clearLayoutDirty(node *core.Node) {
+	node.ClearLayoutDirty()
+	for _, child := range node.Children() {
+		if child.IsLayoutDirty() {
+			clearLayoutDirty(child)
+		}
+	}
+}
+
 // rectIntersectsAny reports whether rect overlaps with any of the dirty rects.
 func rectIntersectsAny(rect core.Rect, dirtyRects []core.Rect) bool {
 	for _, dr := range dirtyRects {
@@ -1101,18 +1115,23 @@ func copyRGBAtoBGRA(src *image.RGBA, dibBits unsafe.Pointer, dibW, x0, y0, x1, y
 	pix := src.Pix
 	stride := src.Stride
 	dibStride := dibW * 4
-	dst := unsafe.Slice((*byte)(dibBits), dibW*src.Bounds().Dy()*4)
+	totalDIBBytes := dibW * src.Bounds().Dy() * 4
+	dst := unsafe.Slice((*byte)(dibBits), totalDIBBytes)
+	rowPixels := x1 - x0
 
 	for y := y0; y < y1; y++ {
 		srcOff := y*stride + x0*4
 		dstOff := y*dibStride + x0*4
-		for x := x0; x < x1; x++ {
-			si := srcOff + (x-x0)*4
-			di := dstOff + (x-x0)*4
-			dst[di+0] = pix[si+2] // B
-			dst[di+1] = pix[si+1] // G
-			dst[di+2] = pix[si+0] // R
-			dst[di+3] = pix[si+3] // A
+
+		// Batch process: read/write 4 bytes at a time via uint32.
+		// On little-endian x64, RGBA bytes [R,G,B,A] = uint32(A<<24|B<<16|G<<8|R).
+		// BGRA bytes [B,G,R,A] = swap bits 0-7 (R) with bits 16-23 (B).
+		srcU32 := unsafe.Slice((*uint32)(unsafe.Pointer(&pix[srcOff])), rowPixels)
+		dstU32 := unsafe.Slice((*uint32)(unsafe.Pointer(&dst[dstOff])), rowPixels)
+		for i := 0; i < rowPixels; i++ {
+			v := srcU32[i]
+			// Swap R and B channels, keep G and A in place.
+			dstU32[i] = (v & 0xFF00FF00) | ((v & 0xFF) << 16) | ((v >> 16) & 0xFF)
 		}
 	}
 }

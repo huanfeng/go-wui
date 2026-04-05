@@ -501,6 +501,24 @@ func (b *gdiInteropBackend) Close() {
 	b.renderer = nil
 }
 
+// textCacheEntry stores a rendered text coverage mask for reuse.
+type textCacheEntry struct {
+	pixels []byte // BGRA coverage mask (white text on black)
+	stride int
+	width  int
+	height int
+}
+
+// textCacheKey identifies a unique text rendering.
+type textCacheKey struct {
+	text       string
+	fontFamily string
+	fontWeight int
+	fontSize   float64
+}
+
+const textCacheMaxEntries = 128
+
 // DWriteTextRenderer implements core.TextRenderer using DirectWrite COM APIs.
 type DWriteTextRenderer struct {
 	factory    uintptr // IDWriteFactory*
@@ -512,6 +530,10 @@ type DWriteTextRenderer struct {
 
 	// GDI Interop backend for pixel rendering.
 	backend *gdiInteropBackend
+
+	// Text rendering cache: coverage mask keyed by (text, font).
+	cache     map[textCacheKey]*textCacheEntry
+	cacheKeys []textCacheKey // insertion order for LRU eviction
 
 	mu sync.Mutex
 }
@@ -682,6 +704,7 @@ func (tr *DWriteTextRenderer) SetFont(fontFamily string, weight int, size float6
 	}
 	if changed {
 		tr.recreateTextFormat()
+		tr.invalidateCache()
 	}
 }
 
@@ -722,7 +745,31 @@ func (tr *DWriteTextRenderer) DrawText(canvas core.Canvas, text string, x, y flo
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 
-	// Lazily initialize GDI Interop backend (for bitmap target DC).
+	// Determine text color.
+	var clrR, clrG, clrB uint8
+	if paint != nil && paint.Color.A != 0 {
+		clrR = paint.Color.R
+		clrG = paint.Color.G
+		clrB = paint.Color.B
+	}
+
+	// Check cache for a pre-rendered coverage mask.
+	key := textCacheKey{
+		text:       text,
+		fontFamily: tr.fontFamily,
+		fontWeight: tr.fontWeight,
+		fontSize:   tr.fontSize,
+	}
+	if entry, ok := tr.cache[key]; ok {
+		// Cache hit — composite directly, skip all COM calls.
+		compositeToCanvas(target, int(x), int(y), entry.width, entry.height,
+			entry.pixels, entry.stride, clrR, clrG, clrB)
+		return
+	}
+
+	// Cache miss — render via DirectWrite.
+
+	// Lazily initialize GDI Interop backend.
 	if tr.backend == nil {
 		b := &gdiInteropBackend{}
 		if err := b.Init(tr.factory); err != nil {
@@ -731,16 +778,7 @@ func (tr *DWriteTextRenderer) DrawText(canvas core.Canvas, text string, x, y flo
 		tr.backend = b
 	}
 
-	// Determine text color as COLORREF (0x00BBGGRR).
-	var clrR, clrG, clrB uint8
-	if paint != nil && paint.Color.A != 0 {
-		clrR = paint.Color.R
-		clrG = paint.Color.G
-		clrB = paint.Color.B
-	}
-	colorRef := uint32(clrB)<<16 | uint32(clrG)<<8 | uint32(clrR)
-
-	// Measure text to determine bitmap size (DirectWrite measurement).
+	// Measure text to determine bitmap size.
 	size := tr.measureTextLocked(text)
 	bmpW := int(math.Ceil(size.Width)) + 4
 	bmpH := int(math.Ceil(size.Height)) + 4
@@ -753,48 +791,62 @@ func (tr *DWriteTextRenderer) DrawText(canvas core.Canvas, text string, x, y flo
 		return
 	}
 
-	// Always render WHITE text on the black bitmap to get a coverage mask.
-	// compositeToCanvas uses max(R,G,B) as alpha and applies the actual
-	// text color (clrR, clrG, clrB) during compositing.
-	_ = colorRef
+	// Render WHITE text on black to get a color-independent coverage mask.
 	tr.backend.renderer.textColor = 0x00FFFFFF
 
-	// Create a text layout for rendering via DirectWrite.
 	layout, err := tr.createTextLayout(text, float64(bmpW), float64(bmpH))
 	if err != nil || layout == 0 {
 		return
 	}
 	defer comRelease(layout)
 
-	// Get baseline from line metrics for correct vertical positioning.
-	lineMetricsList, _ := getLineMetrics(layout)
-	var baselineY float32
-	if len(lineMetricsList) > 0 {
-		baselineY = lineMetricsList[0].Baseline
-	}
-
-	// Render text using IDWriteTextLayout::Draw (vtable index 58).
-	// This calls our goTextRenderer COM callback chain:
-	//   Draw() → DrawGlyphRun() (CGO trampoline) → IDWriteBitmapRenderTarget::DrawGlyphRun
-	// The renderer pointer is passed as the custom text renderer.
+	// IDWriteTextLayout::Draw (vtable index 58).
 	comCall(layout, 58,
-		0, // clientDrawingContext (unused)
-		uintptr(unsafe.Pointer(tr.backend.renderer)), // IDWriteTextRenderer*
-		uintptr(math.Float32bits(0)),                  // originX
-		uintptr(math.Float32bits(0)),                  // originY
+		0,
+		uintptr(unsafe.Pointer(tr.backend.renderer)),
+		uintptr(math.Float32bits(0)),
+		uintptr(math.Float32bits(0)),
 	)
-	_ = baselineY // baseline handled by DirectWrite layout internally
 
-	// Read pixels from the DirectWrite bitmap.
 	pixels, stride, err := tr.backend.EndDraw()
 	if err != nil {
 		return
 	}
 
-	// Composite BGRA pixels onto the canvas RGBA image.
-	// DirectWrite renders text on black background via IDWriteBitmapRenderTarget.
-	// Use max(R,G,B) as coverage alpha, apply requested text color.
+	// Store in cache (copy pixels since backend reuses the buffer).
+	cached := make([]byte, len(pixels))
+	copy(cached, pixels)
+	tr.putCache(key, &textCacheEntry{
+		pixels: cached,
+		stride: stride,
+		width:  bmpW,
+		height: bmpH,
+	})
+
 	compositeToCanvas(target, int(x), int(y), bmpW, bmpH, pixels, stride, clrR, clrG, clrB)
+}
+
+// putCache adds an entry to the text cache with LRU eviction.
+func (tr *DWriteTextRenderer) putCache(key textCacheKey, entry *textCacheEntry) {
+	if tr.cache == nil {
+		tr.cache = make(map[textCacheKey]*textCacheEntry)
+	}
+
+	tr.cache[key] = entry
+	tr.cacheKeys = append(tr.cacheKeys, key)
+
+	// Evict oldest entries when over limit.
+	for len(tr.cacheKeys) > textCacheMaxEntries {
+		evictKey := tr.cacheKeys[0]
+		tr.cacheKeys = tr.cacheKeys[1:]
+		delete(tr.cache, evictKey)
+	}
+}
+
+// invalidateCache clears the text cache (called when font settings change).
+func (tr *DWriteTextRenderer) invalidateCache() {
+	tr.cache = nil
+	tr.cacheKeys = nil
 }
 
 // measureTextLocked measures text — must be called with tr.mu held.

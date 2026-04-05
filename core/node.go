@@ -41,6 +41,10 @@ type Node struct {
 	dirty      bool
 	childDirty bool
 
+	// Layout dirty: set when structural/sizing changes require re-measure/arrange.
+	// Pure visual changes (color, hover state) do NOT set this flag.
+	layoutDirty bool
+
 	// Dirty region tracking (only used on root node).
 	dirtyRects []Rect
 	dirtyFull  bool // true = degrade to full repaint
@@ -55,11 +59,12 @@ type Node struct {
 // NewNode creates a new Node with the given tag name.
 func NewNode(tag string) *Node {
 	return &Node{
-		tag:        tag,
-		visibility: Visible,
-		enabled:    true,
-		dirty:      true,
-		data:       make(map[string]interface{}),
+		tag:         tag,
+		visibility:  Visible,
+		enabled:     true,
+		dirty:       true,
+		layoutDirty: true,
+		data:        make(map[string]interface{}),
 	}
 }
 
@@ -94,6 +99,7 @@ func (n *Node) AddChild(child *Node) {
 	child.parent = n
 	n.children = append(n.children, child)
 	n.MarkDirty()
+	n.MarkLayoutDirty()
 
 	// Auto-DPI-scale: if any ancestor has dpiScale set and this child
 	// hasn't been scaled yet, scale it now.
@@ -124,6 +130,7 @@ func (n *Node) RemoveChild(child *Node) {
 			n.children = append(n.children[:i], n.children[i+1:]...)
 			child.parent = nil
 			n.MarkDirty()
+			n.MarkLayoutDirty()
 			return
 		}
 	}
@@ -153,6 +160,7 @@ func (n *Node) SetVisibility(v Visibility) {
 	if n.visibility != v {
 		n.visibility = v
 		n.MarkDirty()
+		n.MarkLayoutDirty()
 	}
 }
 
@@ -394,6 +402,28 @@ func (n *Node) IsChildDirty() bool {
 func (n *Node) ClearDirty() {
 	n.dirty = false
 	n.childDirty = false
+}
+
+// MarkLayoutDirty marks this node and its ancestors as needing re-layout.
+// Call this when structural or sizing changes occur (add/remove child, text change,
+// visibility change, dimension change). Do NOT call for pure visual changes.
+func (n *Node) MarkLayoutDirty() {
+	for node := n; node != nil; node = node.parent {
+		if node.layoutDirty {
+			break
+		}
+		node.layoutDirty = true
+	}
+}
+
+// IsLayoutDirty reports whether this node or any descendant needs re-layout.
+func (n *Node) IsLayoutDirty() bool {
+	return n.layoutDirty
+}
+
+// ClearLayoutDirty clears the layout dirty flag on this node.
+func (n *Node) ClearLayoutDirty() {
+	n.layoutDirty = false
 }
 
 // ---------- DPI Scaling ----------
