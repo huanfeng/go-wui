@@ -433,7 +433,13 @@ func (c *GGCanvas) clipLocalRect(rect core.Rect) core.Rect {
 // memory as the gg context's internal Pixmap. This allows direct pixel
 // manipulation (text rendering, image compositing) to coexist with gg's
 // vector drawing on the same buffer without copies.
+//
+// FlushGPU is called to ensure any pending GPU-accelerated drawing
+// operations are committed to the pixel buffer before access.
 func (c *GGCanvas) targetRGBA() *image.RGBA {
+	// Flush pending GPU operations so pixel data is up-to-date.
+	c.dc.FlushGPU()
+
 	if c.sharedTarget != nil {
 		return c.sharedTarget
 	}
