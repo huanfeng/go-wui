@@ -12,6 +12,75 @@ import (
 	"github.com/huanfeng/wind-ui/widget"
 )
 
+// --- Container/node helpers ---
+
+// containerPainter draws the background for layout containers.
+type containerPainter struct{}
+
+func (p *containerPainter) Measure(node *core.Node, ws, hs core.MeasureSpec) core.Size {
+	w, h := 0.0, 0.0
+	if ws.Mode == core.MeasureModeExact {
+		w = ws.Size
+	}
+	if hs.Mode == core.MeasureModeExact {
+		h = hs.Size
+	}
+	return core.Size{Width: w, Height: h}
+}
+
+func (p *containerPainter) Paint(node *core.Node, canvas core.Canvas) {
+	s := node.GetStyle()
+	if s == nil {
+		return
+	}
+	b := node.Bounds()
+	localRect := core.Rect{Width: b.Width, Height: b.Height}
+	if s.BackgroundColor.A > 0 {
+		paint := &core.Paint{Color: s.BackgroundColor, DrawStyle: core.PaintFill}
+		if s.CornerRadius > 0 {
+			canvas.DrawRoundRect(localRect, s.CornerRadius, paint)
+		} else {
+			canvas.DrawRect(localRect, paint)
+		}
+	}
+	if s.BorderWidth > 0 && s.BorderColor.A > 0 {
+		paint := &core.Paint{Color: s.BorderColor, DrawStyle: core.PaintStroke, StrokeWidth: s.BorderWidth}
+		if s.CornerRadius > 0 {
+			canvas.DrawRoundRect(localRect, s.CornerRadius, paint)
+		} else {
+			canvas.DrawRect(localRect, paint)
+		}
+	}
+}
+
+var sharedContainerPainter = &containerPainter{}
+
+// newLinearLayout creates a properly initialized LinearLayout node.
+func newLinearLayout(orient layout.Orientation) *core.Node {
+	n := core.NewNode("LinearLayout")
+	n.SetStyle(&core.Style{})
+	n.SetLayout(&layout.LinearLayout{Orientation: orient})
+	n.SetPainter(sharedContainerPainter)
+	return n
+}
+
+// newFrameLayout creates a properly initialized FrameLayout node.
+func newFrameLayout() *core.Node {
+	n := core.NewNode("FrameLayout")
+	n.SetStyle(&core.Style{})
+	n.SetLayout(&layout.FrameLayout{})
+	n.SetPainter(sharedContainerPainter)
+	return n
+}
+
+// newView creates a styled View node with background painter.
+func newView() *core.Node {
+	n := core.NewNode("View")
+	n.SetStyle(&core.Style{})
+	n.SetPainter(sharedContainerPainter)
+	return n
+}
+
 // nodeView wraps a *core.Node as a core.View for use with SplitPane etc.
 type nodeView struct{ node *core.Node }
 
@@ -76,7 +145,7 @@ func Run() {
 }
 
 func (ed *Editor) buildUI() *core.Node {
-	main := core.NewNode("LinearLayout")
+	main := newLinearLayout(layout.Vertical)
 	main.SetStyle(&core.Style{BackgroundColor: color.RGBA{R: 240, G: 240, B: 240, A: 255}})
 
 	main.AddChild(ed.buildToolbar())
@@ -90,7 +159,7 @@ func (ed *Editor) buildUI() *core.Node {
 }
 
 func (ed *Editor) buildToolbar() *core.Node {
-	bar := core.NewNode("LinearLayout")
+	bar := newLinearLayout(layout.Vertical)
 	bar.SetStyle(&core.Style{
 		Height:          core.Dimension{Unit: core.DimensionDp, Value: 40},
 		BackgroundColor: color.RGBA{R: 50, G: 50, B: 60, A: 255},
@@ -113,7 +182,7 @@ func (ed *Editor) buildToolbar() *core.Node {
 	addBtn("Open", ed.onOpen)
 	addBtn("Save", ed.onSave)
 
-	spacer := core.NewNode("View")
+	spacer := newView()
 	spacer.SetStyle(&core.Style{
 		Width:  core.Dimension{Unit: core.DimensionWeight, Value: 1},
 		Height: core.Dimension{Unit: core.DimensionDp, Value: 1},
@@ -158,7 +227,7 @@ func (ed *Editor) buildContent() *widget.SplitPane {
 }
 
 func (ed *Editor) buildPalette() *core.Node {
-	panel := core.NewNode("LinearLayout")
+	panel := newLinearLayout(layout.Vertical)
 	panel.SetStyle(&core.Style{
 		Width:           core.Dimension{Unit: core.DimensionMatchParent},
 		Height:          core.Dimension{Unit: core.DimensionMatchParent},
@@ -180,7 +249,7 @@ func (ed *Editor) buildPalette() *core.Node {
 		Height: core.Dimension{Unit: core.DimensionWeight, Value: 1},
 	})
 
-	list := core.NewNode("LinearLayout")
+	list := newLinearLayout(layout.Vertical)
 	list.SetStyle(&core.Style{
 		Width:  core.Dimension{Unit: core.DimensionMatchParent},
 		Height: core.Dimension{Unit: core.DimensionWrapContent},
@@ -218,7 +287,7 @@ func (ed *Editor) buildPalette() *core.Node {
 }
 
 func (ed *Editor) buildCanvas() *core.Node {
-	frame := core.NewNode("FrameLayout")
+	frame := newFrameLayout()
 	frame.SetStyle(&core.Style{
 		Width:           core.Dimension{Unit: core.DimensionMatchParent},
 		Height:          core.Dimension{Unit: core.DimensionMatchParent},
@@ -226,7 +295,7 @@ func (ed *Editor) buildCanvas() *core.Node {
 	})
 	frame.SetPadding(core.Insets{Left: 16, Top: 16, Right: 16, Bottom: 16})
 
-	ed.previewRoot = core.NewNode("LinearLayout")
+	ed.previewRoot = newLinearLayout(layout.Vertical)
 	ed.previewRoot.SetStyle(&core.Style{
 		Width:           core.Dimension{Unit: core.DimensionMatchParent},
 		Height:          core.Dimension{Unit: core.DimensionMatchParent},
@@ -237,7 +306,7 @@ func (ed *Editor) buildCanvas() *core.Node {
 }
 
 func (ed *Editor) buildHierarchy() *core.Node {
-	panel := core.NewNode("LinearLayout")
+	panel := newLinearLayout(layout.Vertical)
 	panel.SetStyle(&core.Style{
 		Width:           core.Dimension{Unit: core.DimensionMatchParent},
 		Height:          core.Dimension{Unit: core.DimensionMatchParent},
@@ -268,7 +337,7 @@ func (ed *Editor) buildHierarchy() *core.Node {
 }
 
 func (ed *Editor) buildPropsPanel() *core.Node {
-	panel := core.NewNode("LinearLayout")
+	panel := newLinearLayout(layout.Vertical)
 	panel.SetStyle(&core.Style{
 		Width:           core.Dimension{Unit: core.DimensionMatchParent},
 		Height:          core.Dimension{Unit: core.DimensionMatchParent},
@@ -304,7 +373,7 @@ func (ed *Editor) buildPropsPanel() *core.Node {
 }
 
 func (ed *Editor) buildStatusBar() *core.Node {
-	bar := core.NewNode("LinearLayout")
+	bar := newLinearLayout(layout.Vertical)
 	bar.SetStyle(&core.Style{
 		Height:          core.Dimension{Unit: core.DimensionDp, Value: 24},
 		BackgroundColor: color.RGBA{R: 50, G: 50, B: 60, A: 255},
@@ -435,11 +504,31 @@ func (ed *Editor) refreshCanvas() {
 }
 
 func (ed *Editor) buildPreviewNode(enode *EditorNode) *core.Node {
-	node := core.NewNode(enode.Tag)
-	s := &core.Style{
-		Width:  core.Dimension{Unit: core.DimensionMatchParent},
-		Height: core.Dimension{Unit: core.DimensionWrapContent},
+	// Create properly initialized node based on tag.
+	var node *core.Node
+	orient := layout.Vertical
+	if enode.Attrs["orientation"] == "horizontal" {
+		orient = layout.Horizontal
 	}
+	switch enode.Tag {
+	case "LinearLayout":
+		node = newLinearLayout(orient)
+	case "FrameLayout":
+		node = newFrameLayout()
+	default:
+		if enode.IsContainer() {
+			node = newLinearLayout(orient)
+		} else {
+			node = newView()
+		}
+	}
+	s := node.GetStyle()
+	if s == nil {
+		s = &core.Style{}
+		node.SetStyle(s)
+	}
+	s.Width = core.Dimension{Unit: core.DimensionMatchParent}
+	s.Height = core.Dimension{Unit: core.DimensionWrapContent}
 
 	if w, ok := enode.Attrs["width"]; ok {
 		s.Width = parseDimension(w)
@@ -454,7 +543,6 @@ func (ed *Editor) buildPreviewNode(enode *EditorNode) *core.Node {
 		s.BorderWidth = 2
 		s.BorderColor = color.RGBA{R: 33, G: 150, B: 243, A: 255}
 	}
-	node.SetStyle(s)
 
 	if enode.IsContainer() {
 		if s.BackgroundColor == (color.RGBA{}) {
@@ -507,7 +595,7 @@ func (ed *Editor) refreshProperties() {
 		return
 	}
 
-	form := core.NewNode("LinearLayout")
+	form := newLinearLayout(layout.Vertical)
 	form.SetStyle(&core.Style{
 		Width:  core.Dimension{Unit: core.DimensionMatchParent},
 		Height: core.Dimension{Unit: core.DimensionWrapContent},
@@ -539,7 +627,7 @@ func (ed *Editor) refreshProperties() {
 			form.AddChild(gl.Node())
 		}
 
-		row := core.NewNode("LinearLayout")
+		row := newLinearLayout(layout.Vertical)
 		row.SetStyle(&core.Style{
 			Width:  core.Dimension{Unit: core.DimensionMatchParent},
 			Height: core.Dimension{Unit: core.DimensionDp, Value: 26},
