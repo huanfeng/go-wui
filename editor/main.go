@@ -2,15 +2,60 @@ package editor
 
 import (
 	"fmt"
+	"image"
 	"image/color"
+	"image/png"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/huanfeng/wind-ui/app"
 	"github.com/huanfeng/wind-ui/core"
 	"github.com/huanfeng/wind-ui/layout"
 	"github.com/huanfeng/wind-ui/platform"
+	"github.com/huanfeng/wind-ui/render/gg"
 	"github.com/huanfeng/wind-ui/widget"
 )
+
+
+// captureScreenshot renders the editor UI offscreen and saves as PNG.
+func (ed *Editor) captureScreenshot() {
+	if ed.screenshotPath == "" || ed.uiRoot == nil {
+		return
+	}
+	width, height := 1280, 800
+	if s := ed.window.GetSize(); s.Width > 0 && s.Height > 0 {
+		width, height = int(s.Width), int(s.Height)
+	}
+
+	tr := ed.app.Platform().CreateTextRenderer()
+	canvas := gg.NewGGCanvas(width, height, tr)
+	wSpec := core.MeasureSpec{Mode: core.MeasureModeExact, Size: float64(width)}
+	hSpec := core.MeasureSpec{Mode: core.MeasureModeExact, Size: float64(height)}
+	layout.MeasureChild(ed.uiRoot, wSpec, hSpec)
+	if l := ed.uiRoot.GetLayout(); l != nil {
+		l.Arrange(ed.uiRoot, core.Rect{Width: float64(width), Height: float64(height)})
+	}
+	ed.uiRoot.SetBounds(core.Rect{Width: float64(width), Height: float64(height)})
+	app.PaintNode(ed.uiRoot, canvas)
+
+	img := canvas.Target()
+	if err := savePNG(ed.screenshotPath, img); err != nil {
+		fmt.Printf("Screenshot error: %v\n", err)
+	} else {
+		fmt.Printf("Screenshot saved: %s (%dx%d)\n", ed.screenshotPath, width, height)
+	}
+	ed.window.Close()
+}
+
+func savePNG(path string, img *image.RGBA) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return png.Encode(f, img)
+}
 
 // --- Container/node helpers ---
 
@@ -56,9 +101,9 @@ func (p *containerPainter) Paint(node *core.Node, canvas core.Canvas) {
 var sharedContainerPainter = &containerPainter{}
 
 // newLinearLayout creates a properly initialized LinearLayout node.
+// Callers should use SetStyle to configure dimensions and colors.
 func newLinearLayout(orient layout.Orientation) *core.Node {
 	n := core.NewNode("LinearLayout")
-	n.SetStyle(&core.Style{})
 	n.SetLayout(&layout.LinearLayout{Orientation: orient})
 	n.SetPainter(sharedContainerPainter)
 	return n
@@ -67,16 +112,14 @@ func newLinearLayout(orient layout.Orientation) *core.Node {
 // newFrameLayout creates a properly initialized FrameLayout node.
 func newFrameLayout() *core.Node {
 	n := core.NewNode("FrameLayout")
-	n.SetStyle(&core.Style{})
 	n.SetLayout(&layout.FrameLayout{})
 	n.SetPainter(sharedContainerPainter)
 	return n
 }
 
-// newView creates a styled View node with background painter.
+// newView creates a View node with background painter.
 func newView() *core.Node {
 	n := core.NewNode("View")
-	n.SetStyle(&core.Style{})
 	n.SetPainter(sharedContainerPainter)
 	return n
 }
@@ -105,7 +148,9 @@ type Editor struct {
 	doc    *Document
 
 	// UI state
-	selectedNode *EditorNode
+	selectedNode   *EditorNode
+	screenshotPath string // if set, save PNG after first render and exit
+	uiRoot         *core.Node
 
 	// Panels
 	hierarchyTree *widget.TreeView
@@ -114,8 +159,10 @@ type Editor struct {
 	previewRoot   *core.Node
 }
 
-// Run launches the editor.
-func Run() {
+// Run launches the editor. If screenshotPath is non-empty, the editor
+// renders one frame, saves a PNG screenshot, and exits without entering
+// the event loop — useful for automated visual debugging.
+func Run(screenshotPath ...string) {
 	application := app.NewApplication()
 
 	ed := &Editor{
@@ -135,9 +182,22 @@ func Run() {
 	}
 	ed.window = window
 
-	root := ed.buildUI()
-	window.SetContentView(root)
+	ed.uiRoot = ed.buildUI()
+	window.SetContentView(ed.uiRoot)
 	ed.refreshAll()
+
+	// Screenshot mode: capture after first render via animation timer.
+	if len(screenshotPath) > 0 && screenshotPath[0] != "" {
+		ed.screenshotPath = screenshotPath[0]
+		anim := &core.ValueAnimator{
+			From: 0, To: 1,
+			Duration: 200 * time.Millisecond,
+			OnEnd: func() {
+				ed.captureScreenshot()
+			},
+		}
+		window.StartAnimator(anim)
+	}
 
 	window.Center()
 	window.Show()
@@ -146,12 +206,18 @@ func Run() {
 
 func (ed *Editor) buildUI() *core.Node {
 	main := newLinearLayout(layout.Vertical)
-	main.SetStyle(&core.Style{BackgroundColor: color.RGBA{R: 240, G: 240, B: 240, A: 255}})
+	main.SetStyle(&core.Style{
+		Width:           core.Dimension{Unit: core.DimensionMatchParent},
+		Height:          core.Dimension{Unit: core.DimensionMatchParent},
+		BackgroundColor: color.RGBA{R: 240, G: 240, B: 240, A: 255},
+	})
 
 	main.AddChild(ed.buildToolbar())
 
 	content := ed.buildContent()
-	content.Node().GetStyle().Height = core.Dimension{Unit: core.DimensionWeight, Value: 1}
+	cs := content.Node().GetStyle()
+	cs.Height = core.Dimension{Unit: core.DimensionWeight, Value: 1}
+	cs.Weight = 1
 	main.AddChild(content.Node())
 
 	main.AddChild(ed.buildStatusBar())
@@ -159,8 +225,9 @@ func (ed *Editor) buildUI() *core.Node {
 }
 
 func (ed *Editor) buildToolbar() *core.Node {
-	bar := newLinearLayout(layout.Vertical)
+	bar := newLinearLayout(layout.Horizontal)
 	bar.SetStyle(&core.Style{
+		Width:           core.Dimension{Unit: core.DimensionMatchParent},
 		Height:          core.Dimension{Unit: core.DimensionDp, Value: 40},
 		BackgroundColor: color.RGBA{R: 50, G: 50, B: 60, A: 255},
 	})
@@ -186,6 +253,7 @@ func (ed *Editor) buildToolbar() *core.Node {
 	spacer.SetStyle(&core.Style{
 		Width:  core.Dimension{Unit: core.DimensionWeight, Value: 1},
 		Height: core.Dimension{Unit: core.DimensionDp, Value: 1},
+			Weight: 1,
 	})
 	bar.AddChild(spacer)
 
@@ -247,6 +315,7 @@ func (ed *Editor) buildPalette() *core.Node {
 	scroll.Node().SetStyle(&core.Style{
 		Width:  core.Dimension{Unit: core.DimensionMatchParent},
 		Height: core.Dimension{Unit: core.DimensionWeight, Value: 1},
+		Weight: 1,
 	})
 
 	list := newLinearLayout(layout.Vertical)
@@ -326,6 +395,7 @@ func (ed *Editor) buildHierarchy() *core.Node {
 	ed.hierarchyTree.Node().SetStyle(&core.Style{
 		Width:  core.Dimension{Unit: core.DimensionMatchParent},
 		Height: core.Dimension{Unit: core.DimensionWeight, Value: 1},
+		Weight: 1,
 	})
 	ed.hierarchyTree.SetOnNodeSelectedListener(func(tnode *widget.TreeNode) {
 		if enode, ok := tnode.Data.(*EditorNode); ok {
@@ -357,6 +427,7 @@ func (ed *Editor) buildPropsPanel() *core.Node {
 	ed.propsScroll.Node().SetStyle(&core.Style{
 		Width:  core.Dimension{Unit: core.DimensionMatchParent},
 		Height: core.Dimension{Unit: core.DimensionWeight, Value: 1},
+		Weight: 1,
 	})
 
 	placeholder := widget.NewTextView("Select a node to edit properties")
@@ -373,8 +444,9 @@ func (ed *Editor) buildPropsPanel() *core.Node {
 }
 
 func (ed *Editor) buildStatusBar() *core.Node {
-	bar := newLinearLayout(layout.Vertical)
+	bar := newLinearLayout(layout.Horizontal)
 	bar.SetStyle(&core.Style{
+		Width:           core.Dimension{Unit: core.DimensionMatchParent},
 		Height:          core.Dimension{Unit: core.DimensionDp, Value: 24},
 		BackgroundColor: color.RGBA{R: 50, G: 50, B: 60, A: 255},
 	})
@@ -627,7 +699,7 @@ func (ed *Editor) refreshProperties() {
 			form.AddChild(gl.Node())
 		}
 
-		row := newLinearLayout(layout.Vertical)
+		row := newLinearLayout(layout.Horizontal)
 		row.SetStyle(&core.Style{
 			Width:  core.Dimension{Unit: core.DimensionMatchParent},
 			Height: core.Dimension{Unit: core.DimensionDp, Value: 26},
@@ -652,6 +724,7 @@ func (ed *Editor) refreshProperties() {
 			Height:          core.Dimension{Unit: core.DimensionMatchParent},
 			FontSize:        11,
 			BackgroundColor: color.RGBA{R: 255, G: 255, B: 255, A: 255},
+		Weight: 1,
 		})
 		valTV.Node().SetPadding(core.Insets{Left: 4, Top: 4})
 		row.AddChild(valTV.Node())
