@@ -116,32 +116,44 @@ func buildUI() *core.Node {
 	})
 	root.SetPainter(&bgPainter{})
 
-	// ====== Section 1: Pure Chinese text ======
-	addSectionTitle(root, "1. Chinese Text (Pure)")
+	// ====== Section 1: 纯中文文本 ======
+	addSectionTitle(root, "1. 纯中文文本")
 	chineseTexts := []string{
-		"Hello World",
-		"Hello, World! This is Wind UI.",
-		"ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-		"Mixed: Hello World 123",
+		"你好，世界！",
+		"这是 Wind UI 轻量级界面框架。",
+		"春眠不觉晓，处处闻啼鸟。",
+		"天地玄黄，宇宙洪荒。日月盈昃，辰宿列张。",
 	}
 	for _, text := range chineseTexts {
 		addTextWithBg(root, text, 14, color.RGBA{R: 255, G: 255, B: 255, A: 220})
 	}
 
-	// ====== Section 2: Different font sizes ======
-	addSectionTitle(root, "2. Font Size Comparison")
+	// ====== Section 2: 中英文混排 ======
+	addSectionTitle(root, "2. 中英文混排")
+	mixedTexts := []string{
+		"Wind UI 是一个用 Go 编写的 Direct UI 框架",
+		"版本 v1.0 已发布，支持 Windows 平台",
+		"使用 DirectWrite 渲染中文，FreeType 作为后备",
+		"Hello你好World世界 Mixed混合Text文本",
+	}
+	for _, text := range mixedTexts {
+		addTextWithBg(root, text, 14, color.RGBA{R: 230, G: 240, B: 255, A: 200})
+	}
+
+	// ====== Section 3: 不同字号 ======
+	addSectionTitle(root, "3. 不同字号对比")
 	sizes := []float64{10, 12, 14, 16, 20, 24}
 	for _, sz := range sizes {
-		label := fmt.Sprintf("[%.0fpx] Wind UI Framework Test", sz)
+		label := fmt.Sprintf("[%.0fpx] 中文字体渲染测试 ABC", sz)
 		tv := widget.NewTextView(label)
 		tv.Node().GetStyle().FontSize = sz
 		tv.Node().GetStyle().TextColor = color.RGBA{R: 33, G: 33, B: 33, A: 255}
-		tv.Node().GetStyle().BackgroundColor = color.RGBA{R: 230, G: 240, B: 255, A: 200}
+		tv.Node().GetStyle().BackgroundColor = color.RGBA{R: 255, G: 245, B: 230, A: 200}
 		root.AddChild(tv.Node())
 	}
 
-	// ====== Section 3: Buttons with text ======
-	addSectionTitle(root, "3. Buttons")
+	// ====== Section 4: 中文按钮和控件 ======
+	addSectionTitle(root, "4. 中文按钮")
 	btnRow := core.NewNode("btnRow")
 	btnRow.SetLayout(&layout.LinearLayout{Orientation: layout.Horizontal, Spacing: 8})
 	btnRow.SetStyle(&core.Style{
@@ -150,28 +162,28 @@ func buildUI() *core.Node {
 	})
 	root.AddChild(btnRow)
 
-	for _, label := range []string{"OK", "Cancel", "Submit", "Settings"} {
+	for _, label := range []string{"确定", "取消", "提交表单", "系统设置"} {
 		btn := widget.NewButton(label, nil)
 		btnRow.AddChild(btn.Node())
 	}
 
-	// ====== Section 4: CheckBox / RadioButton ======
-	addSectionTitle(root, "4. CheckBox & RadioButton")
-	for _, label := range []string{"Agree to terms", "Enable feature", "Remember me"} {
+	// ====== Section 5: 中文 CheckBox / RadioButton ======
+	addSectionTitle(root, "5. 复选框与单选按钮")
+	for _, label := range []string{"同意用户协议", "启用深色模式", "记住登录状态"} {
 		cb := widget.NewCheckBox(label)
 		root.AddChild(cb.Node())
 	}
-	for _, label := range []string{"Option A", "Option B", "Option C"} {
+	for _, label := range []string{"小号字体", "中号字体", "大号字体"} {
 		rb := widget.NewRadioButton(label)
 		root.AddChild(rb.Node())
 	}
 
-	// ====== Section 5: Long text / wrapping test ======
-	addSectionTitle(root, "5. Long Text (measurement accuracy)")
+	// ====== Section 6: 长文本换行测试 ======
+	addSectionTitle(root, "6. 长文本换行测试")
 	longTexts := []string{
-		"This is a very long text line to test whether the text measurement system correctly handles extended ASCII content without overflow or truncation issues in the Wind UI framework.",
-		"Short.",
-		"A B C D E F G H I J K L M N O P Q R S T U V W X Y Z 0 1 2 3 4 5 6 7 8 9",
+		"这是一段非常长的中文文本，用于测试文本测量系统是否能正确处理超长中文内容的宽度计算，确保不会出现文字溢出或被截断的问题。Wind UI 使用 TextMeasurer 接口在布局阶段获取精确的文本尺寸。",
+		"短文本。",
+		"标点符号测试：，。！？；：【】《》（）——……、～",
 	}
 	for _, text := range longTexts {
 		addTextWithBg(root, text, 13, color.RGBA{R: 255, G: 255, B: 240, A: 220})
