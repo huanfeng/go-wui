@@ -273,16 +273,15 @@ func (p *dialogOverlayPainter) Paint(node *core.Node, canvas core.Canvas) {
 		dialogH += titleFontSize*1.4 + 8*dpi
 	}
 	if d.message != "" {
-		// Estimate wrapped lines
-		charWidth := fontSize * 0.6
+		msgPaint := &core.Paint{FontSize: fontSize}
 		contentW := dialogW - scaledPadding*2
-		charsPerLine := int(contentW / charWidth)
-		if charsPerLine < 1 {
-			charsPerLine = 1
+		msgSize := core.NodeMeasureText(node, d.message, msgPaint)
+		// Estimate wrapped lines based on measured text width
+		lines := int(msgSize.Width/contentW) + 1
+		if lines < 1 {
+			lines = 1
 		}
-		msgRunes := len([]rune(d.message))
-		lines := (msgRunes + charsPerLine - 1) / charsPerLine
-		dialogH += float64(lines) * fontSize * 1.4
+		dialogH += float64(lines) * msgSize.Height
 	}
 	btns := d.buttonTexts()
 	if len(btns) > 0 {
@@ -386,22 +385,34 @@ func (p *dialogPainter) Paint(node *core.Node, canvas core.Canvas) {
 		msgPaint := &core.Paint{Color: textColor, FontSize: fontSize}
 		msgPaint.Color.A = 200
 
-		// Simple word wrapping
+		// Word wrapping using measured text width
 		contentW := b.Width - pad*2
-		charWidth := fontSize * 0.6
-		charsPerLine := int(contentW / charWidth)
-		if charsPerLine < 1 {
-			charsPerLine = 1
-		}
 		runes := []rune(d.message)
-		for i := 0; i < len(runes); i += charsPerLine {
-			end := i + charsPerLine
-			if end > len(runes) {
-				end = len(runes)
+		lineStart := 0
+		for lineStart < len(runes) {
+			// Binary-search for the longest substring that fits contentW
+			lineEnd := len(runes)
+			for lo, hi := lineStart+1, len(runes); lo <= hi; {
+				mid := (lo + hi) / 2
+				seg := string(runes[lineStart:mid])
+				segSize := canvas.MeasureText(seg, msgPaint)
+				if segSize.Width <= contentW {
+					lineEnd = mid
+					lo = mid + 1
+				} else {
+					hi = mid - 1
+				}
 			}
-			line := string(runes[i:end])
+			// If the full remaining text fits, take it all
+			fullSeg := string(runes[lineStart:])
+			if canvas.MeasureText(fullSeg, msgPaint).Width <= contentW {
+				lineEnd = len(runes)
+			}
+			line := string(runes[lineStart:lineEnd])
+			lineSize := canvas.MeasureText(line, msgPaint)
 			canvas.DrawText(line, pad, y, msgPaint)
-			y += fontSize * 1.4
+			y += lineSize.Height
+			lineStart = lineEnd
 		}
 	}
 
@@ -473,10 +484,11 @@ func (h *dialogHandler) hitTestButton(node *core.Node, x, y float64) int {
 	}
 
 	btnX := b.Width - pad
-	charWidth := fontSize * 0.6
+	btnPaint := &core.Paint{FontSize: fontSize, FontWeight: 600}
 	for i := len(btns) - 1; i >= 0; i-- {
 		btn := btns[i]
-		btnW := float64(len([]rune(btn.text)))*charWidth + 24*dpi
+		btnTextSize := core.NodeMeasureText(d.node, btn.text, btnPaint)
+		btnW := btnTextSize.Width + 24*dpi
 		btnX -= btnW + btnGap
 		if localX >= btnX && localX < btnX+btnW {
 			return i

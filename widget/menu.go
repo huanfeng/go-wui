@@ -176,10 +176,11 @@ func (pm *PopupMenu) menuWidth() float64 {
 	if s != nil && s.FontSize > 0 {
 		fontSize = s.FontSize // already DPI-scaled
 	}
-	charWidth := fontSize * 0.6
+	menuPaint := &core.Paint{FontSize: fontSize}
 	maxW := menuMinWidth * dpi
 	for _, item := range pm.menu.items {
-		w := float64(len([]rune(item.Title)))*charWidth + menuItemPadding*2*dpi
+		textSize := core.NodeMeasureText(pm.node, item.Title, menuPaint)
+		w := textSize.Width + menuItemPadding*2*dpi
 		if w > maxW {
 			maxW = w
 		}

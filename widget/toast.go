@@ -186,10 +186,12 @@ func (p *toastOverlayPainter) Paint(node *core.Node, canvas core.Canvas) {
 	if s != nil && s.FontSize > 0 {
 		fontSize = s.FontSize // already DPI-scaled
 	}
-	charWidth := fontSize * 0.6
-	toastW := float64(len([]rune(t.message)))*charWidth + padH*2
+	toastPaint := &core.Paint{FontSize: fontSize}
+	msgSize := core.NodeMeasureText(t.node, t.message, toastPaint)
+	toastW := msgSize.Width + padH*2
 	if t.actionText != "" {
-		toastW += float64(len([]rune(t.actionText)))*charWidth + padH
+		actionSize := core.NodeMeasureText(t.node, t.actionText, toastPaint)
+		toastW += actionSize.Width + padH
 	}
 	maxW := b.Width - margin*2
 	if toastW > maxW {

@@ -50,11 +50,14 @@ func (p *textViewPainter) Measure(node *core.Node, ws, hs core.MeasureSpec) core
 		fontSize = s.FontSize
 	}
 
-	// Estimate text size: ~0.6 * fontSize per character width, fontSize * 1.4 for height.
-	// This is a rough estimate — actual rendering uses TextRenderer.
-	charWidth := fontSize * 0.6
-	w := float64(len([]rune(text))) * charWidth
-	h := fontSize * 1.4
+	paint := &core.Paint{FontSize: fontSize}
+	if s != nil {
+		paint.FontFamily = s.FontFamily
+		paint.FontWeight = s.FontWeight
+	}
+	textSize := core.NodeMeasureText(node, text, paint)
+	w := textSize.Width
+	h := textSize.Height
 
 	if ws.Mode == core.MeasureModeExact {
 		w = ws.Size

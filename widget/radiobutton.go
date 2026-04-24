@@ -84,11 +84,15 @@ func (p *radioButtonPainter) Measure(node *core.Node, ws, hs core.MeasureSpec) c
 		fontSize = s.FontSize
 	}
 
-	charWidth := fontSize * 0.6
-	textWidth := float64(len([]rune(text))) * charWidth
+	paint := &core.Paint{FontSize: fontSize}
+	if s != nil {
+		paint.FontFamily = s.FontFamily
+		paint.FontWeight = s.FontWeight
+	}
+	textSize := core.NodeMeasureText(node, text, paint)
 
-	w := circleSize + gap + textWidth
-	h := max(circleSize, fontSize*1.4)
+	w := circleSize + gap + textSize.Width
+	h := max(circleSize, textSize.Height)
 
 	if ws.Mode == core.MeasureModeExact {
 		w = ws.Size

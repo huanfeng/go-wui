@@ -812,6 +812,12 @@ func (w *win32Window) render() {
 
 	root := contentView
 
+	// Expose TextMeasurer on the root node so Painter.Measure() can
+	// perform accurate text measurement during the layout pass.
+	if core.GetTextMeasurer(root) == nil {
+		root.SetData("textMeasurer", core.NewTextMeasurer(w.textRenderer))
+	}
+
 	// Determine if we need full or partial repaint.
 	sizeChanged := w.cachedImage == nil ||
 		w.cachedImage.Bounds().Dx() != width ||

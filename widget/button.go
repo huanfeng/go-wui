@@ -72,9 +72,14 @@ func (p *buttonPainter) Measure(node *core.Node, ws, hs core.MeasureSpec) core.S
 		fontSize = s.FontSize
 	}
 
-	charWidth := fontSize * 0.6
-	w := float64(len([]rune(text)))*charWidth + 32 // horizontal padding
-	h := fontSize*1.4 + 16                         // vertical padding
+	paint := &core.Paint{FontSize: fontSize}
+	if s != nil {
+		paint.FontFamily = s.FontFamily
+		paint.FontWeight = s.FontWeight
+	}
+	textSize := core.NodeMeasureText(node, text, paint)
+	w := textSize.Width + 32 // horizontal padding
+	h := textSize.Height + 16 // vertical padding
 
 	if ws.Mode == core.MeasureModeExact {
 		w = ws.Size

@@ -78,11 +78,15 @@ func (p *checkBoxPainter) Measure(node *core.Node, ws, hs core.MeasureSpec) core
 		fontSize = s.FontSize
 	}
 
-	charWidth := fontSize * 0.6
-	textWidth := float64(len([]rune(text))) * charWidth
+	paint := &core.Paint{FontSize: fontSize}
+	if s != nil {
+		paint.FontFamily = s.FontFamily
+		paint.FontWeight = s.FontWeight
+	}
+	textSize := core.NodeMeasureText(node, text, paint)
 
-	w := boxSize + gap + textWidth
-	h := max(boxSize, fontSize*1.4)
+	w := boxSize + gap + textSize.Width
+	h := max(boxSize, textSize.Height)
 
 	if ws.Mode == core.MeasureModeExact {
 		w = ws.Size
