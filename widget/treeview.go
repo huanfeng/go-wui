@@ -129,13 +129,27 @@ type treeViewPainter struct {
 }
 
 func (p *treeViewPainter) Measure(node *core.Node, ws, hs core.MeasureSpec) core.Size {
-	w, h := 0.0, 0.0
-	if ws.Mode == core.MeasureModeExact {
+	dpi := getDPIScale(node)
+	contentH := float64(len(p.tv.flat)) * treeNodeHeight * dpi
+
+	w, h := 0.0, contentH
+
+	switch ws.Mode {
+	case core.MeasureModeExact:
+		w = ws.Size
+	case core.MeasureModeAtMost:
 		w = ws.Size
 	}
-	if hs.Mode == core.MeasureModeExact {
+
+	switch hs.Mode {
+	case core.MeasureModeExact:
 		h = hs.Size
+	case core.MeasureModeAtMost:
+		if contentH > hs.Size {
+			h = hs.Size
+		}
 	}
+
 	return core.Size{Width: w, Height: h}
 }
 
@@ -259,11 +273,15 @@ func (h *treeViewHandler) OnEvent(node *core.Node, event core.Event) bool {
 
 	// Scroll wheel
 	if se, ok := event.(*core.ScrollEvent); ok {
+		oldScrollY := tv.scrollY
 		dpi := getDPIScale(node)
 		tv.scrollY -= se.DeltaY * 48 * dpi
 		h.clampScroll()
-		node.MarkDirty()
-		return true
+		if tv.scrollY != oldScrollY {
+			node.MarkDirty()
+			return true
+		}
+		return false // at boundary, let parent scroll
 	}
 
 	me, ok := event.(*core.MotionEvent)

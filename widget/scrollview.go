@@ -69,6 +69,7 @@ func (sv *ScrollView) ScrollTo(x, y float64) {
 	sv.scrollLayout.OffsetX = x
 	sv.scrollLayout.OffsetY = y
 	sv.clampScroll()
+	sv.rearrangeChildren()
 	sv.node.MarkDirty()
 }
 
@@ -85,6 +86,15 @@ func (sv *ScrollView) GetScrollY() float64 {
 // Direction returns the scroll orientation.
 func (sv *ScrollView) Direction() layout.Orientation {
 	return sv.scrollLayout.Direction
+}
+
+// rearrangeChildren re-runs Arrange on the ScrollView's layout so that child
+// bounds reflect the current scroll offset. This must be called after any
+// scroll offset change to keep bounds in sync with the paint pass.
+func (sv *ScrollView) rearrangeChildren() {
+	if l := sv.node.GetLayout(); l != nil {
+		l.Arrange(sv.node, sv.node.Bounds())
+	}
 }
 
 // clampScroll clamps the scroll offset to valid bounds.
@@ -140,6 +150,7 @@ func (sv *ScrollView) startFling(velocity float64) {
 				sv.scrollLayout.OffsetX = startOffset + value
 			}
 			sv.clampScroll()
+			sv.rearrangeChildren()
 			sv.node.MarkDirty()
 		},
 	}
@@ -193,15 +204,28 @@ func (h *scrollViewHandler) OnEvent(node *core.Node, event core.Event) bool {
 
 	// Handle scroll wheel events
 	if se, ok := event.(*core.ScrollEvent); ok {
+		var oldOffset float64
 		if sv.scrollLayout.Direction == layout.Vertical {
+			oldOffset = sv.scrollLayout.OffsetY
 			sv.scrollLayout.OffsetY -= se.DeltaY * scrollWheelStep
 		} else {
+			oldOffset = sv.scrollLayout.OffsetX
 			sv.scrollLayout.OffsetX -= se.DeltaX * scrollWheelStep
 		}
 		sv.scrollbar.ClearHover()
 		sv.clampScroll()
-		node.MarkDirty()
-		return true
+		var newOffset float64
+		if sv.scrollLayout.Direction == layout.Vertical {
+			newOffset = sv.scrollLayout.OffsetY
+		} else {
+			newOffset = sv.scrollLayout.OffsetX
+		}
+		if newOffset != oldOffset {
+			sv.rearrangeChildren()
+			node.MarkDirty()
+			return true
+		}
+		return false // at boundary, let parent scroll
 	}
 
 	// Delegate scrollbar interaction to the shared Scrollbar component
@@ -220,6 +244,7 @@ func (h *scrollViewHandler) OnEvent(node *core.Node, event core.Event) bool {
 				sv.scrollLayout.OffsetX = newOffset
 			}
 			sv.clampScroll()
+			sv.rearrangeChildren()
 		}
 		node.MarkDirty()
 		return true
@@ -274,6 +299,7 @@ func (h *scrollViewHandler) OnEvent(node *core.Node, event core.Event) bool {
 			}
 			sv.lastTime = now
 			sv.clampScroll()
+			sv.rearrangeChildren()
 			node.MarkDirty()
 			return true
 		}
