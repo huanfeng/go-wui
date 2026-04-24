@@ -1,9 +1,8 @@
 package widget
 
 import (
-	"image/color"
-
 	"github.com/huanfeng/wind-ui/core"
+	"github.com/huanfeng/wind-ui/theme"
 )
 
 // ButtonState represents the visual state of a button.
@@ -28,10 +27,11 @@ func NewButton(text string, onClick func(core.View)) *Button {
 	btn.node = initNode("Button", btn)
 	btn.node.SetPainter(&buttonPainter{btn: btn})
 	btn.node.SetHandler(&buttonHandler{btn: btn})
+	c := theme.CurrentColors()
 	btn.node.SetStyle(&core.Style{
 		FontSize:        16,
-		BackgroundColor: core.ParseColor("#1976D2"),
-		TextColor:       color.RGBA{R: 255, G: 255, B: 255, A: 255},
+		BackgroundColor: c.Primary,
+		TextColor:       c.TextOnPrimary,
 		CornerRadius:    4,
 	})
 	btn.node.SetData("text", text)

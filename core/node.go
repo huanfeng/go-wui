@@ -428,25 +428,47 @@ func (n *Node) ClearLayoutDirty() {
 
 // ---------- DPI Scaling ----------
 
-// ScaleNodeDPI recursively scales dp values (padding, margin, font size,
-// dimensions, spacing) in the subtree by the given DPI scale factor.
-// Each node is marked to prevent double-scaling.
+// originalInsets 保存 padding/margin 的原始 dp 值，用于精确重缩放。
+type originalInsets struct {
+	padding Insets
+	margin  Insets
+}
+
+// ScaleNodeDPI 递归地将子树中的 dp 值（padding、margin、字体大小、尺寸、间距）
+// 按给定的 DPI 缩放系数进行缩放。每个节点被标记以防止重复缩放。
+// 首次缩放时会将原始 dp 值保存到节点 data 中，供 RescaleNodeDPI 精确重算使用。
 func ScaleNodeDPI(node *Node, scale float64) {
 	if node.GetData("dpiScaled") != nil {
-		return // already scaled
+		return // 已缩放，跳过
 	}
 	node.SetData("dpiScale", scale)
 	node.SetData("dpiScaled", true)
 
 	if scale == 1.0 {
-		// Still mark dpiScale so children can find it, but skip actual scaling
+		// scale=1.0 时仍需标记 dpiScale，供子节点查找；跳过实际缩放
 		for _, child := range node.Children() {
 			ScaleNodeDPI(child, scale)
 		}
 		return
 	}
 
-	// Scale padding
+	// 保存原始 Style（仅首次，防止覆盖）
+	if node.GetData("originalStyle") == nil {
+		if s := node.GetStyle(); s != nil {
+			orig := *s // 值复制，保留原始 dp 值
+			node.SetData("originalStyle", &orig)
+		}
+	}
+
+	// 保存原始 padding/margin（仅首次）
+	if node.GetData("originalInsets") == nil {
+		node.SetData("originalInsets", &originalInsets{
+			padding: node.Padding(),
+			margin:  node.Margin(),
+		})
+	}
+
+	// 缩放 padding
 	p := node.Padding()
 	node.SetPadding(Insets{
 		Left:   p.Left * scale,
@@ -455,7 +477,7 @@ func ScaleNodeDPI(node *Node, scale float64) {
 		Bottom: p.Bottom * scale,
 	})
 
-	// Scale margin
+	// 缩放 margin
 	m := node.Margin()
 	node.SetMargin(Insets{
 		Left:   m.Left * scale,
@@ -464,7 +486,7 @@ func ScaleNodeDPI(node *Node, scale float64) {
 		Bottom: m.Bottom * scale,
 	})
 
-	// Scale style dimensions
+	// 缩放 Style 中的尺寸字段
 	if s := node.GetStyle(); s != nil {
 		if s.FontSize > 0 {
 			s.FontSize *= scale
@@ -483,16 +505,129 @@ func ScaleNodeDPI(node *Node, scale float64) {
 		}
 	}
 
-	// Scale layout spacing via DPIScalable interface
+	// 通过 DPIScalable 接口缩放 Layout 内部间距
 	if l := node.GetLayout(); l != nil {
 		if ds, ok := l.(DPIScalable); ok {
 			ds.ScaleDPI(scale)
 		}
 	}
 
-	// Recurse children
+	// 递归处理子节点
 	for _, child := range node.Children() {
 		ScaleNodeDPI(child, scale)
+	}
+}
+
+// RescaleNodeDPI 将整棵子树从旧 DPI 缩放比例重新缩放到新比例。
+// 与 ScaleNodeDPI 不同，它从保存的原始 dp 值重新计算，避免浮点累积误差。
+// 当显示器 DPI 在运行时发生变化（WM_DPICHANGED）时调用此函数。
+func RescaleNodeDPI(node *Node, newScale float64) {
+	// 读取当前已存储的 dpiScale
+	oldScale, ok := node.GetData("dpiScale").(float64)
+	if !ok || oldScale <= 0 {
+		// 节点尚未被 ScaleNodeDPI 处理，使用首次缩放流程
+		ScaleNodeDPI(node, newScale)
+		return
+	}
+
+	if oldScale == newScale {
+		// DPI 未发生变化，无需操作
+		for _, child := range node.Children() {
+			RescaleNodeDPI(child, newScale)
+		}
+		return
+	}
+
+	// 更新存储的 dpiScale
+	node.SetData("dpiScale", newScale)
+
+	// 从原始 Style 重新计算，避免浮点累积误差
+	if orig, ok := node.GetData("originalStyle").(*Style); ok {
+		if s := node.GetStyle(); s != nil {
+			if orig.FontSize > 0 {
+				s.FontSize = orig.FontSize * newScale
+			}
+			if orig.CornerRadius > 0 {
+				s.CornerRadius = orig.CornerRadius * newScale
+			}
+			if orig.BorderWidth > 0 {
+				s.BorderWidth = orig.BorderWidth * newScale
+			}
+			if orig.Width.Unit == DimensionDp && orig.Width.Value > 0 {
+				s.Width.Value = orig.Width.Value * newScale
+			}
+			if orig.Height.Unit == DimensionDp && orig.Height.Value > 0 {
+				s.Height.Value = orig.Height.Value * newScale
+			}
+		}
+	} else if newScale != oldScale {
+		// 没有原始值备份时，用 ratio 进行相对缩放（降级路径）
+		ratio := newScale / oldScale
+		if s := node.GetStyle(); s != nil {
+			if s.FontSize > 0 {
+				s.FontSize *= ratio
+			}
+			if s.CornerRadius > 0 {
+				s.CornerRadius *= ratio
+			}
+			if s.BorderWidth > 0 {
+				s.BorderWidth *= ratio
+			}
+			if s.Width.Unit == DimensionDp && s.Width.Value > 0 {
+				s.Width.Value *= ratio
+			}
+			if s.Height.Unit == DimensionDp && s.Height.Value > 0 {
+				s.Height.Value *= ratio
+			}
+		}
+	}
+
+	// 从原始 padding/margin 重新计算
+	if origInsets, ok := node.GetData("originalInsets").(*originalInsets); ok {
+		node.SetPadding(Insets{
+			Left:   origInsets.padding.Left * newScale,
+			Top:    origInsets.padding.Top * newScale,
+			Right:  origInsets.padding.Right * newScale,
+			Bottom: origInsets.padding.Bottom * newScale,
+		})
+		node.SetMargin(Insets{
+			Left:   origInsets.margin.Left * newScale,
+			Top:    origInsets.margin.Top * newScale,
+			Right:  origInsets.margin.Right * newScale,
+			Bottom: origInsets.margin.Bottom * newScale,
+		})
+	} else {
+		// 没有原始值备份时，用 ratio 进行相对缩放（降级路径）
+		ratio := newScale / oldScale
+		p := node.Padding()
+		node.SetPadding(Insets{
+			Left:   p.Left * ratio,
+			Top:    p.Top * ratio,
+			Right:  p.Right * ratio,
+			Bottom: p.Bottom * ratio,
+		})
+		m := node.Margin()
+		node.SetMargin(Insets{
+			Left:   m.Left * ratio,
+			Top:    m.Top * ratio,
+			Right:  m.Right * ratio,
+			Bottom: m.Bottom * ratio,
+		})
+	}
+
+	// 通过 DPIScalable 接口重新缩放 Layout 内部间距（使用 ratio）
+	if oldScale > 0 && newScale != oldScale {
+		ratio := newScale / oldScale
+		if l := node.GetLayout(); l != nil {
+			if ds, ok := l.(DPIScalable); ok {
+				ds.ScaleDPI(ratio)
+			}
+		}
+	}
+
+	// 递归处理子节点
+	for _, child := range node.Children() {
+		RescaleNodeDPI(child, newScale)
 	}
 }
 

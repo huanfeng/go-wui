@@ -45,13 +45,15 @@ const (
 type MotionAction int
 
 const (
-	ActionDown       MotionAction = iota
+	ActionDown        MotionAction = iota
 	ActionMove
 	ActionUp
 	ActionCancel
 	ActionHoverEnter
 	ActionHoverMove
 	ActionHoverExit
+	ActionDoubleClick // 双击
+	ActionRightClick  // 右键点击（上下文菜单）
 )
 
 // MouseButton identifies a mouse button.

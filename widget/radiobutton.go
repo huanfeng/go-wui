@@ -4,6 +4,7 @@ import (
 	"image/color"
 
 	"github.com/huanfeng/wind-ui/core"
+	"github.com/huanfeng/wind-ui/theme"
 )
 
 // RadioButton is a selectable circle with a text label.
@@ -23,7 +24,7 @@ func NewRadioButton(text string) *RadioButton {
 	rb.node.SetHandler(&radioButtonHandler{rb: rb})
 	rb.node.SetStyle(&core.Style{
 		FontSize:  14,
-		TextColor: color.RGBA{R: 33, G: 33, B: 33, A: 255},
+		TextColor: theme.CurrentColors().TextPrimary,
 	})
 	rb.node.SetData("text", text)
 	rb.node.SetData("selected", false)
@@ -124,7 +125,7 @@ func (p *radioButtonPainter) Paint(node *core.Node, canvas core.Canvas) {
 	cx := circleRadius
 	cy := b.Height / 2
 
-	primaryColor := core.ParseColor("#1976D2")
+	primaryColor := theme.CurrentColors().Primary
 
 	// Draw outer circle (stroke only)
 	outerPaint := &core.Paint{

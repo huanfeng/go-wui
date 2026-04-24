@@ -43,6 +43,7 @@ const (
 
 	CS_HREDRAW    = 0x0002
 	CS_VREDRAW    = 0x0001
+	CS_DBLCLKS    = 0x0008 // 允许窗口接收双击消息（WM_LBUTTONDBLCLK 已在 tray_windows.go 中声明）
 	IDC_ARROW     = 32512
 	SW_SHOW       = 5
 	SW_HIDE       = 0
@@ -234,7 +235,7 @@ func registerWindowClass() error {
 
 	wc := WNDCLASSEXW{
 		CbSize:        uint32(unsafe.Sizeof(WNDCLASSEXW{})),
-		Style:         CS_HREDRAW | CS_VREDRAW,
+		Style:         CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS, // CS_DBLCLKS 使窗口能接收 WM_LBUTTONDBLCLK 消息
 		LpfnWndProc:   syscall.NewCallback(wndProc),
 		HInstance:     hInstance,
 		HCursor:       hCursor,
@@ -382,16 +383,14 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_DPICHANGED:
-		// wParam: LOWORD = new X DPI, HIWORD = new Y DPI
+		// wParam: LOWORD = 新 X DPI，HIWORD = 新 Y DPI
 		newDPI := float64(int16(wParam & 0xFFFF))
 		newScale := newDPI / 96.0
 		if newScale > 0 && newScale != w.dpiScale {
-			oldScale := w.dpiScale
 			w.dpiScale = newScale
-			// Re-scale the node tree by the ratio of new/old DPI
-			if w.contentView != nil && oldScale > 0 {
-				ratio := newScale / oldScale
-				rescaleNodeTree(w.contentView, ratio)
+			// 使用 core.RescaleNodeDPI 重新缩放节点树（从原始 dp 值计算，避免浮点累积误差）
+			if w.contentView != nil {
+				core.RescaleNodeDPI(w.contentView, newScale)
 			}
 			// lParam points to a RECT with the suggested new window position/size
 			if lParam != 0 {
@@ -468,6 +467,13 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		w.dispatchMotion(core.ActionUp, float64(x), float64(y), core.MouseButtonLeft)
 		return 0
 
+	case WM_LBUTTONDBLCLK:
+		// 鼠标左键双击：发送 ActionDoubleClick 事件
+		x := int(int16(lParam & 0xFFFF))
+		y := int(int16((lParam >> 16) & 0xFFFF))
+		w.dispatchMotion(core.ActionDoubleClick, float64(x), float64(y), core.MouseButtonLeft)
+		return 0
+
 	case WM_RBUTTONDOWN:
 		x := int(int16(lParam & 0xFFFF))
 		y := int(int16((lParam >> 16) & 0xFFFF))
@@ -478,6 +484,8 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		x := int(int16(lParam & 0xFFFF))
 		y := int(int16((lParam >> 16) & 0xFFFF))
 		w.dispatchMotion(core.ActionUp, float64(x), float64(y), core.MouseButtonRight)
+		// 右键抬起时额外发送 ActionRightClick，方便 widget handler 直接处理上下文菜单
+		w.dispatchMotion(core.ActionRightClick, float64(x), float64(y), core.MouseButtonRight)
 		return 0
 
 	case WM_MOUSEWHEEL:
@@ -935,59 +943,6 @@ func (w *win32Window) render() {
 	}
 }
 
-// rescaleNodeTree re-scales all nodes by a ratio (newDPI/oldDPI) when the
-// display DPI changes at runtime. It resets the dpiScaled flag and applies
-// the ratio to all dp-valued fields.
-func rescaleNodeTree(node *core.Node, ratio float64) {
-	// Update stored dpiScale
-	if s, ok := node.GetData("dpiScale").(float64); ok {
-		node.SetData("dpiScale", s*ratio)
-	}
-
-	// Scale padding
-	p := node.Padding()
-	node.SetPadding(core.Insets{
-		Left: p.Left * ratio, Top: p.Top * ratio,
-		Right: p.Right * ratio, Bottom: p.Bottom * ratio,
-	})
-
-	// Scale margin
-	m := node.Margin()
-	node.SetMargin(core.Insets{
-		Left: m.Left * ratio, Top: m.Top * ratio,
-		Right: m.Right * ratio, Bottom: m.Bottom * ratio,
-	})
-
-	// Scale style (already in physical px from previous scaling, multiply by ratio)
-	if s := node.GetStyle(); s != nil {
-		if s.FontSize > 0 {
-			s.FontSize *= ratio
-		}
-		if s.CornerRadius > 0 {
-			s.CornerRadius *= ratio
-		}
-		if s.BorderWidth > 0 {
-			s.BorderWidth *= ratio
-		}
-		if s.Width.Unit == core.DimensionDp && s.Width.Value > 0 {
-			s.Width.Value *= ratio
-		}
-		if s.Height.Unit == core.DimensionDp && s.Height.Value > 0 {
-			s.Height.Value *= ratio
-		}
-	}
-
-	// Scale layout spacing
-	if l := node.GetLayout(); l != nil {
-		if ds, ok := l.(core.DPIScalable); ok {
-			ds.ScaleDPI(ratio)
-		}
-	}
-
-	for _, child := range node.Children() {
-		rescaleNodeTree(child, ratio)
-	}
-}
 
 // PaintNode 递归绘制节点树到画布上（含 overlay 处理）。
 // 实现已统一到 core.PaintNode，此处保留为兼容性包装。

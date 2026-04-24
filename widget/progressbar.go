@@ -2,6 +2,7 @@ package widget
 
 import (
 	"github.com/huanfeng/wind-ui/core"
+	"github.com/huanfeng/wind-ui/theme"
 )
 
 // ProgressBarStyle defines the visual style of a ProgressBar.
@@ -109,16 +110,16 @@ func (p *progressBarPainter) Paint(node *core.Node, canvas core.Canvas) {
 		Height: b.Height,
 	}
 
-	// Draw track background (gray)
-	trackColor := core.ParseColor("#E0E0E0")
+	// Draw track background (使用主题分隔线色作为轨道背景)
+	trackColor := theme.CurrentColors().Divider
 	trackPaint := &core.Paint{
 		Color:     trackColor,
 		DrawStyle: core.PaintFill,
 	}
 	canvas.DrawRoundRect(trackRect, progressBarCornerRadius, trackPaint)
 
-	// Draw progress fill (primary color)
-	primaryColor := core.ParseColor("#1976D2")
+	// Draw progress fill (使用主题主色)
+	primaryColor := theme.CurrentColors().Primary
 	fillPaint := &core.Paint{
 		Color:     primaryColor,
 		DrawStyle: core.PaintFill,

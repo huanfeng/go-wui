@@ -4,6 +4,7 @@ import (
 	"image/color"
 
 	"github.com/huanfeng/wind-ui/core"
+	"github.com/huanfeng/wind-ui/theme"
 )
 
 // CheckBox is a checkable box with a text label.
@@ -21,7 +22,7 @@ func NewCheckBox(text string) *CheckBox {
 	cb.node.SetHandler(&checkBoxHandler{cb: cb})
 	cb.node.SetStyle(&core.Style{
 		FontSize:  14,
-		TextColor: color.RGBA{R: 33, G: 33, B: 33, A: 255},
+		TextColor: theme.CurrentColors().TextPrimary,
 	})
 	cb.node.SetData("text", text)
 	cb.node.SetData("checked", false)
@@ -116,7 +117,7 @@ func (p *checkBoxPainter) Paint(node *core.Node, canvas core.Canvas) {
 	boxX := 0.0
 	boxY := (b.Height - boxSize) / 2
 
-	primaryColor := core.ParseColor("#1976D2")
+	primaryColor := theme.CurrentColors().Primary
 
 	if p.cb.checked {
 		// Filled box with primary color

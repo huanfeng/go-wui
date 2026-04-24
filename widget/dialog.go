@@ -4,6 +4,7 @@ import (
 	"image/color"
 
 	"github.com/huanfeng/wind-ui/core"
+	"github.com/huanfeng/wind-ui/theme"
 )
 
 // DialogButton identifies which button was clicked.
@@ -421,7 +422,7 @@ func (p *dialogPainter) Paint(node *core.Node, canvas core.Canvas) {
 	if len(btns) > 0 {
 		y = b.Height - pad - btnH
 		btnX := b.Width - pad
-		primaryColor := core.ParseColor("#1976D2")
+		primaryColor := theme.CurrentColors().Primary
 
 		for i := len(btns) - 1; i >= 0; i-- {
 			btn := btns[i]

@@ -23,11 +23,17 @@ func initNode(tag string, view core.View) *core.Node {
 	return n
 }
 
-// getDPIScale walks up the node tree to find the DPI scale factor stored on
-// an ancestor (typically the root node). Returns 1.0 if no scale is set.
+// getDPIScale 返回节点的 DPI 缩放系数。
+// 优先直接读取当前节点已存储的 dpiScale 值（O(1)），
+// 仅当当前节点未设置时才向上遍历父链，并将找到的值缓存到当前节点，避免重复遍历。
 func getDPIScale(node *core.Node) float64 {
-	for n := node; n != nil; n = n.Parent() {
+	if s, ok := node.GetData("dpiScale").(float64); ok && s > 0 {
+		return s
+	}
+	// 向上查找并缓存到当前节点，加速后续调用
+	for n := node.Parent(); n != nil; n = n.Parent() {
 		if s, ok := n.GetData("dpiScale").(float64); ok && s > 0 {
+			node.SetData("dpiScale", s)
 			return s
 		}
 	}
