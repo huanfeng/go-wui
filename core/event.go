@@ -109,12 +109,34 @@ func NewMotionEvent(action MotionAction, x, y float64) *MotionEvent {
 // Key represents platform-specific key codes.
 type Key int
 
+// KeyAction describes the kind of keyboard action.
+type KeyAction int
+
+const (
+	ActionKeyDown KeyAction = iota // 键按下
+	ActionKeyUp                    // 键抬起
+)
+
 // KeyEvent represents keyboard events.
 type KeyEvent struct {
 	baseEvent
+	Action   KeyAction
 	KeyCode  Key
 	Char     rune
 	Modifier KeyModifier
+}
+
+// NewKeyEvent creates a KeyEvent with the given action and key code.
+func NewKeyEvent(action KeyAction, keyCode int) *KeyEvent {
+	et := EventKeyDown
+	if action == ActionKeyUp {
+		et = EventKeyUp
+	}
+	return &KeyEvent{
+		baseEvent: baseEvent{eventType: et},
+		Action:    action,
+		KeyCode:   Key(keyCode),
+	}
 }
 
 // ScrollEvent represents mouse wheel / trackpad scroll events.

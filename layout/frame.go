@@ -19,16 +19,22 @@ func (fl *FrameLayout) Measure(node *core.Node, widthSpec, heightSpec core.Measu
 			continue
 		}
 
+		// 读取子节点的 margin，margin 由父布局消耗
+		margin := child.Margin()
+		marginH := margin.Left + margin.Right
+		marginV := margin.Top + margin.Bottom
+
 		style := child.GetStyle()
-		childWidthSpec := childMeasureSpec(widthSpec, paddingH, dimOrDefault(style, true))
-		childHeightSpec := childMeasureSpec(heightSpec, paddingV, dimOrDefault(style, false))
+		childWidthSpec := childMeasureSpec(widthSpec, paddingH+marginH, dimOrDefault(style, true))
+		childHeightSpec := childMeasureSpec(heightSpec, paddingV+marginV, dimOrDefault(style, false))
 
 		sz := MeasureChild(child, childWidthSpec, childHeightSpec)
-		if sz.Width > maxWidth {
-			maxWidth = sz.Width
+		// 子节点在容器中占用的空间包含其自身 margin
+		if sz.Width+marginH > maxWidth {
+			maxWidth = sz.Width + marginH
 		}
-		if sz.Height > maxHeight {
-			maxHeight = sz.Height
+		if sz.Height+marginV > maxHeight {
+			maxHeight = sz.Height + marginV
 		}
 	}
 
@@ -75,24 +81,30 @@ func (fl *FrameLayout) Arrange(node *core.Node, bounds core.Rect) {
 
 		sz := child.MeasuredSize()
 		style := child.GetStyle()
+		// 读取子节点的 margin，margin 由父布局消耗
+		margin := child.Margin()
 
 		gravity := core.GravityStart
 		if style != nil {
 			gravity = style.Gravity
 		}
 
+		// 内容区减去 margin 后的可用空间
+		innerW := contentW - margin.Left - margin.Right
+		innerH := contentH - margin.Top - margin.Bottom
+
 		var x, y float64
 
 		switch gravity {
 		case core.GravityCenter:
-			x = contentX + (contentW-sz.Width)/2
-			y = contentY + (contentH-sz.Height)/2
+			x = contentX + margin.Left + (innerW-sz.Width)/2
+			y = contentY + margin.Top + (innerH-sz.Height)/2
 		case core.GravityEnd:
-			x = contentX + contentW - sz.Width
-			y = contentY + contentH - sz.Height
+			x = contentX + margin.Left + innerW - sz.Width
+			y = contentY + margin.Top + innerH - sz.Height
 		default: // GravityStart
-			x = contentX
-			y = contentY
+			x = contentX + margin.Left
+			y = contentY + margin.Top
 		}
 
 		child.SetBounds(core.Rect{

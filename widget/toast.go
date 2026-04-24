@@ -216,7 +216,7 @@ func (p *toastOverlayPainter) Paint(node *core.Node, canvas core.Canvas) {
 	shadowPaint := &core.Paint{Color: color.RGBA{A: 30}, DrawStyle: core.PaintFill}
 	canvas.DrawRoundRect(core.Rect{X: toastX + 2*dpi, Y: toastY + 2*dpi, Width: toastW, Height: height}, radius, shadowPaint)
 
-	paintNodeRecursive(t.node, canvas)
+	core.PaintNodeRecursive(t.node, canvas)
 }
 
 // ---------- toastPainter ----------

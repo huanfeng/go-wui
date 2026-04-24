@@ -244,7 +244,7 @@ func (p *popupOverlayPainter) Paint(node *core.Node, canvas core.Canvas) {
 	}
 
 	pm.node.SetBounds(core.Rect{X: menuX, Y: menuY, Width: menuW, Height: menuH})
-	paintNodeRecursive(pm.node, canvas)
+	core.PaintNodeRecursive(pm.node, canvas)
 }
 
 // ---------- popupOverlayHandler (captures outside clicks) ----------

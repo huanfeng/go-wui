@@ -69,26 +69,34 @@ func (ll *LinearLayout) measureVertical(node *core.Node, widthSpec, heightSpec c
 		}
 		visibleCount++
 
+		// 读取子节点的 margin，margin 由父布局消耗
+		margin := child.Margin()
+		marginH := margin.Left + margin.Right
+		marginV := margin.Top + margin.Bottom
+
 		style := child.GetStyle()
 		if style != nil && style.Height.Unit == core.DimensionWeight {
 			totalWeight += style.Weight
-			// Measure width only for weighted children in first pass
-			childWidthSpec := childMeasureSpec(widthSpec, paddingH, style.Width)
-			MeasureChild(child, childWidthSpec, core.MeasureSpec{Mode: core.MeasureModeAtMost, Size: availH})
+			// 加权子节点第一遍仅测量宽度，需减去 margin 占用的空间
+			childWidthSpec := childMeasureSpec(widthSpec, paddingH+marginH, style.Width)
+			MeasureChild(child, childWidthSpec, core.MeasureSpec{Mode: core.MeasureModeAtMost, Size: availH - marginV})
 			sz := child.MeasuredSize()
-			if sz.Width > maxWidth {
-				maxWidth = sz.Width
+			// 宽度累计需加上子节点的水平 margin
+			if sz.Width+marginH > maxWidth {
+				maxWidth = sz.Width + marginH
 			}
 			continue
 		}
 
-		childWidthSpec := childMeasureSpec(widthSpec, paddingH, dimOrDefault(style, true))
-		childHeightSpec := childMeasureSpec(heightSpec, paddingV, dimOrDefault(style, false))
+		childWidthSpec := childMeasureSpec(widthSpec, paddingH+marginH, dimOrDefault(style, true))
+		childHeightSpec := childMeasureSpec(heightSpec, paddingV+marginV, dimOrDefault(style, false))
 		sz := MeasureChild(child, childWidthSpec, childHeightSpec)
 
-		totalHeight += sz.Height
-		if sz.Width > maxWidth {
-			maxWidth = sz.Width
+		// 子节点在主轴上占用的空间 = 测量高度 + 垂直 margin
+		totalHeight += sz.Height + marginV
+		// 子节点在交叉轴上占用的空间 = 测量宽度 + 水平 margin
+		if sz.Width+marginH > maxWidth {
+			maxWidth = sz.Width + marginH
 		}
 	}
 
@@ -111,11 +119,15 @@ func (ll *LinearLayout) measureVertical(node *core.Node, widthSpec, heightSpec c
 			if style == nil || style.Height.Unit != core.DimensionWeight {
 				continue
 			}
+			margin := child.Margin()
+			marginH := margin.Left + margin.Right
+			marginV := margin.Top + margin.Bottom
+			// 加权子节点分得的空间需减去其自身 margin
 			portion := remaining * style.Weight / totalWeight
-			childWidthSpec := childMeasureSpec(widthSpec, paddingH, style.Width)
-			sz := MeasureChild(child, childWidthSpec, core.MeasureSpec{Mode: core.MeasureModeExact, Size: portion})
-			if sz.Width > maxWidth {
-				maxWidth = sz.Width
+			childWidthSpec := childMeasureSpec(widthSpec, paddingH+marginH, style.Width)
+			sz := MeasureChild(child, childWidthSpec, core.MeasureSpec{Mode: core.MeasureModeExact, Size: portion - marginV})
+			if sz.Width+marginH > maxWidth {
+				maxWidth = sz.Width + marginH
 			}
 			totalHeight += portion
 		}
@@ -163,19 +175,24 @@ func (ll *LinearLayout) arrangeVertical(node *core.Node, bounds core.Rect) {
 			continue
 		}
 		sz := child.MeasuredSize()
+		margin := child.Margin()
 
-		// Cross-axis (horizontal) alignment
-		x := contentX
+		// 主轴：先推进 margin.Top，子节点从 curY+margin.Top 开始放置
+		childY := curY + margin.Top
+
+		// 交叉轴（水平）对齐，在 padding 内容区中以 margin 缩减后的宽度计算偏移
+		innerW := contentW - margin.Left - margin.Right
+		x := contentX + margin.Left
 		switch ll.Gravity {
 		case core.GravityCenter:
-			x = contentX + (contentW-sz.Width)/2
+			x = contentX + margin.Left + (innerW-sz.Width)/2
 		case core.GravityEnd:
-			x = contentX + contentW - sz.Width
+			x = contentX + margin.Left + innerW - sz.Width
 		}
 
 		child.SetBounds(core.Rect{
 			X:      x,
-			Y:      curY,
+			Y:      childY,
 			Width:  sz.Width,
 			Height: sz.Height,
 		})
@@ -185,7 +202,8 @@ func (ll *LinearLayout) arrangeVertical(node *core.Node, bounds core.Rect) {
 			l.Arrange(child, child.Bounds())
 		}
 
-		curY += sz.Height + ll.Spacing
+		// 推进 curY：子节点高度 + margin.Top + margin.Bottom + Spacing
+		curY += margin.Top + sz.Height + margin.Bottom + ll.Spacing
 	}
 }
 
@@ -215,26 +233,34 @@ func (ll *LinearLayout) measureHorizontal(node *core.Node, widthSpec, heightSpec
 		}
 		visibleCount++
 
+		// 读取子节点的 margin，margin 由父布局消耗
+		margin := child.Margin()
+		marginH := margin.Left + margin.Right
+		marginV := margin.Top + margin.Bottom
+
 		style := child.GetStyle()
 		if style != nil && style.Width.Unit == core.DimensionWeight {
 			totalWeight += style.Weight
-			// Measure height only for weighted children in first pass
-			childHeightSpec := childMeasureSpec(heightSpec, paddingV, dimOrDefault(style, false))
-			MeasureChild(child, core.MeasureSpec{Mode: core.MeasureModeAtMost, Size: availW}, childHeightSpec)
+			// 加权子节点第一遍仅测量高度，需减去 margin 占用的空间
+			childHeightSpec := childMeasureSpec(heightSpec, paddingV+marginV, dimOrDefault(style, false))
+			MeasureChild(child, core.MeasureSpec{Mode: core.MeasureModeAtMost, Size: availW - marginH}, childHeightSpec)
 			sz := child.MeasuredSize()
-			if sz.Height > maxHeight {
-				maxHeight = sz.Height
+			// 高度累计需加上子节点的垂直 margin
+			if sz.Height+marginV > maxHeight {
+				maxHeight = sz.Height + marginV
 			}
 			continue
 		}
 
-		childWidthSpec := childMeasureSpec(widthSpec, paddingH, dimOrDefault(style, true))
-		childHeightSpec := childMeasureSpec(heightSpec, paddingV, dimOrDefault(style, false))
+		childWidthSpec := childMeasureSpec(widthSpec, paddingH+marginH, dimOrDefault(style, true))
+		childHeightSpec := childMeasureSpec(heightSpec, paddingV+marginV, dimOrDefault(style, false))
 		sz := MeasureChild(child, childWidthSpec, childHeightSpec)
 
-		totalWidth += sz.Width
-		if sz.Height > maxHeight {
-			maxHeight = sz.Height
+		// 子节点在主轴上占用的空间 = 测量宽度 + 水平 margin
+		totalWidth += sz.Width + marginH
+		// 子节点在交叉轴上占用的空间 = 测量高度 + 垂直 margin
+		if sz.Height+marginV > maxHeight {
+			maxHeight = sz.Height + marginV
 		}
 	}
 
@@ -257,11 +283,15 @@ func (ll *LinearLayout) measureHorizontal(node *core.Node, widthSpec, heightSpec
 			if style == nil || style.Width.Unit != core.DimensionWeight {
 				continue
 			}
+			margin := child.Margin()
+			marginH := margin.Left + margin.Right
+			marginV := margin.Top + margin.Bottom
+			// 加权子节点分得的空间需减去其自身 margin
 			portion := remaining * style.Weight / totalWeight
-			childHeightSpec := childMeasureSpec(heightSpec, paddingV, dimOrDefault(style, false))
-			sz := MeasureChild(child, core.MeasureSpec{Mode: core.MeasureModeExact, Size: portion}, childHeightSpec)
-			if sz.Height > maxHeight {
-				maxHeight = sz.Height
+			childHeightSpec := childMeasureSpec(heightSpec, paddingV+marginV, dimOrDefault(style, false))
+			sz := MeasureChild(child, core.MeasureSpec{Mode: core.MeasureModeExact, Size: portion - marginH}, childHeightSpec)
+			if sz.Height+marginV > maxHeight {
+				maxHeight = sz.Height + marginV
 			}
 			totalWidth += portion
 		}
@@ -309,18 +339,23 @@ func (ll *LinearLayout) arrangeHorizontal(node *core.Node, bounds core.Rect) {
 			continue
 		}
 		sz := child.MeasuredSize()
+		margin := child.Margin()
 
-		// Cross-axis (vertical) alignment
-		y := contentY
+		// 主轴：先推进 margin.Left，子节点从 curX+margin.Left 开始放置
+		childX := curX + margin.Left
+
+		// 交叉轴（垂直）对齐，在 padding 内容区中以 margin 缩减后的高度计算偏移
+		innerH := contentH - margin.Top - margin.Bottom
+		y := contentY + margin.Top
 		switch ll.Gravity {
 		case core.GravityCenter:
-			y = contentY + (contentH-sz.Height)/2
+			y = contentY + margin.Top + (innerH-sz.Height)/2
 		case core.GravityEnd:
-			y = contentY + contentH - sz.Height
+			y = contentY + margin.Top + innerH - sz.Height
 		}
 
 		child.SetBounds(core.Rect{
-			X:      curX,
+			X:      childX,
 			Y:      y,
 			Width:  sz.Width,
 			Height: sz.Height,
@@ -331,7 +366,8 @@ func (ll *LinearLayout) arrangeHorizontal(node *core.Node, bounds core.Rect) {
 			l.Arrange(child, child.Bounds())
 		}
 
-		curX += sz.Width + ll.Spacing
+		// 推进 curX：子节点宽度 + margin.Left + margin.Right + Spacing
+		curX += margin.Left + sz.Width + margin.Right + ll.Spacing
 	}
 }
 

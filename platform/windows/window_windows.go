@@ -200,6 +200,7 @@ type win32Window struct {
 
 	lastHoverNode   *core.Node // tracks which node the mouse is over for HoverEnter/Exit
 	capturedNode    *core.Node // pointer capture: receives all Move/Up events after ActionDown
+	focusManager    *core.FocusManager // 键盘焦点管理器
 
 	onClose        func() bool
 	onResize       func(w, h int)
@@ -434,6 +435,16 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_ERASEBKGND:
 		return 1 // We handle background painting ourselves
 
+	case WM_KEYDOWN:
+		vk := int(wParam)
+		w.dispatchKey(core.ActionKeyDown, vk)
+		return 0
+
+	case WM_KEYUP:
+		vk := int(wParam)
+		w.dispatchKey(core.ActionKeyUp, vk)
+		return 0
+
 	case WM_MOUSEMOVE:
 		x := int(int16(lParam & 0xFFFF))
 		y := int(int16((lParam >> 16) & 0xFFFF))
@@ -566,6 +577,56 @@ func (w *win32Window) dispatchMotion(action core.MotionAction, x, y float64, but
 			w.Invalidate()
 		}
 	}
+}
+
+// getKeyState 返回指定虚拟键的当前状态。
+// 当返回值最高位为 1 时，表示该键处于按下状态。
+func getKeyState(vk int) bool {
+	// 确保 procGetKeyState 已初始化（由 initNativeEditProcs 懒加载）
+	initNativeEditProcs()
+	ret, _, _ := procGetKeyState.Call(uintptr(vk))
+	return (ret & 0x8000) != 0
+}
+
+// dispatchKey 处理键盘事件分发。
+// Tab/Shift+Tab 触发焦点导航，其他键分发到当前焦点节点。
+func (w *win32Window) dispatchKey(action core.KeyAction, vkCode int) {
+	if w.contentView == nil {
+		return
+	}
+
+	// Tab 键（VK_TAB = 0x09）处理焦点导航
+	if vkCode == 0x09 && action == core.ActionKeyDown {
+		if w.focusManager != nil {
+			// 检查 Shift 键（VK_SHIFT = 0x10）判断导航方向
+			shift := getKeyState(0x10)
+			w.focusManager.MoveFocus(w.contentView, !shift)
+			w.contentView.MarkDirty()
+			w.postAppPaint()
+		}
+		return
+	}
+
+	// 其他键分发到当前焦点节点
+	evt := core.NewKeyEvent(action, vkCode)
+	if w.focusManager != nil {
+		focused := w.focusManager.Current()
+		if focused != nil {
+			if h := focused.GetHandler(); h != nil {
+				h.OnEvent(focused, evt)
+			}
+		}
+	}
+}
+
+// postAppPaint 向消息队列投递一个 WM_APP_PAINT 消息触发重绘。
+func (w *win32Window) postAppPaint() {
+	procPostMessageW.Call(w.hwnd, WM_APP_PAINT, 0, 0)
+}
+
+// GetFocusManager 返回窗口的焦点管理器，供外部访问当前焦点节点。
+func (w *win32Window) GetFocusManager() *core.FocusManager {
+	return w.focusManager
 }
 
 // dispatchScroll creates and dispatches a ScrollEvent through the node tree.
@@ -810,6 +871,11 @@ func (w *win32Window) render() {
 		w.textRenderer = w.plat.CreateTextRenderer()
 	}
 
+	// 初始化焦点管理器（仅一次）
+	if w.focusManager == nil {
+		w.focusManager = core.NewFocusManager()
+	}
+
 	root := contentView
 
 	// Expose TextMeasurer on the root node so Painter.Measure() can
@@ -923,27 +989,10 @@ func rescaleNodeTree(node *core.Node, ratio float64) {
 	}
 }
 
-// PaintNode recursively paints a node tree onto a canvas.
-// If a node has the "paintsChildren" data flag set, child painting is
-// skipped here because the node's Painter handles it internally (e.g.
-// ScrollView applies clipping and scroll-offset translation).
+// PaintNode 递归绘制节点树到画布上（含 overlay 处理）。
+// 实现已统一到 core.PaintNode，此处保留为兼容性包装。
 func PaintNode(node *core.Node, canvas core.Canvas) {
-	if node.GetVisibility() != core.Visible {
-		return
-	}
-	canvas.Save()
-	b := node.Bounds()
-	canvas.Translate(b.X, b.Y)
-	if p := node.GetPainter(); p != nil {
-		p.Paint(node, canvas)
-	}
-	// Skip child painting if the painter already handled it
-	if node.GetData("paintsChildren") == nil {
-		for _, child := range node.Children() {
-			PaintNode(child, canvas)
-		}
-	}
-	canvas.Restore()
+	core.PaintNode(node, canvas)
 }
 
 // PaintNodeDirty repaints all visible nodes that spatially intersect the dirty

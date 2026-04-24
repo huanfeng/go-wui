@@ -167,7 +167,7 @@ func (p *splitPanePainter) Paint(node *core.Node, canvas core.Canvas) {
 			l.Measure(pn, ws, hs)
 			l.Arrange(pn, firstBounds)
 		}
-		paintNodeRecursive(pn, canvas)
+		core.PaintNodeRecursive(pn, canvas)
 	}
 
 	// Measure and paint second pane
@@ -181,7 +181,7 @@ func (p *splitPanePainter) Paint(node *core.Node, canvas core.Canvas) {
 			l.Measure(pn, ws, hs)
 			l.Arrange(pn, secondBounds)
 		}
-		paintNodeRecursive(pn, canvas)
+		core.PaintNodeRecursive(pn, canvas)
 	}
 
 	// Draw divider

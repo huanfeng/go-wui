@@ -29,21 +29,29 @@ func (sl *ScrollLayout) Measure(node *core.Node, widthSpec, heightSpec core.Meas
 			// No visible child — just use viewport size
 		} else {
 			style := child.GetStyle()
+			// 读取子节点的 margin，margin 由父布局消耗
+			margin := child.Margin()
+			marginH := margin.Left + margin.Right
+			marginV := margin.Top + margin.Bottom
 
 			var childWidthSpec, childHeightSpec core.MeasureSpec
 
 			if sl.Direction == Vertical {
 				// Vertical scroll: child gets parent's width spec, unbound height
-				childWidthSpec = childMeasureSpec(widthSpec, paddingH, dimOrDefault(style, true))
+				childWidthSpec = childMeasureSpec(widthSpec, paddingH+marginH, dimOrDefault(style, true))
 				childHeightSpec = core.MeasureSpec{Mode: core.MeasureModeUnbound}
 			} else {
 				// Horizontal scroll: child gets unbound width, parent's height spec
 				childWidthSpec = core.MeasureSpec{Mode: core.MeasureModeUnbound}
-				childHeightSpec = childMeasureSpec(heightSpec, paddingV, dimOrDefault(style, false))
+				childHeightSpec = childMeasureSpec(heightSpec, paddingV+marginV, dimOrDefault(style, false))
 			}
 
 			sz := MeasureChild(child, childWidthSpec, childHeightSpec)
-			sl.childSize = sz
+			// 记录子节点含 margin 的整体尺寸，用于滚动范围计算
+			sl.childSize = core.Size{
+				Width:  sz.Width + marginH,
+				Height: sz.Height + marginV,
+			}
 		}
 	}
 
@@ -93,9 +101,11 @@ func (sl *ScrollLayout) Arrange(node *core.Node, bounds core.Rect) {
 	}
 
 	sz := child.MeasuredSize()
+	// 子节点位置 = padding + margin - scroll offset
+	margin := child.Margin()
 	child.SetBounds(core.Rect{
-		X:      padding.Left - sl.OffsetX,
-		Y:      padding.Top - sl.OffsetY,
+		X:      padding.Left + margin.Left - sl.OffsetX,
+		Y:      padding.Top + margin.Top - sl.OffsetY,
 		Width:  sz.Width,
 		Height: sz.Height,
 	})

@@ -382,34 +382,13 @@ func (p *scrollViewPainter) Paint(node *core.Node, canvas core.Canvas) {
 		if child.GetVisibility() != core.Visible {
 			continue
 		}
-		paintNodeRecursive(child, canvas)
+		core.PaintNodeRecursive(child, canvas)
 	}
 
 	canvas.Restore()
 
 	// 3. Draw scroll indicator
 	p.paintScrollIndicator(node, canvas)
-}
-
-// paintNodeRecursive paints a node and its descendants.
-// This mirrors the standard PaintNode logic used in app/ and platform/.
-func paintNodeRecursive(node *core.Node, canvas core.Canvas) {
-	if node.GetVisibility() != core.Visible {
-		return
-	}
-	canvas.Save()
-	b := node.Bounds()
-	canvas.Translate(b.X, b.Y)
-	if painter := node.GetPainter(); painter != nil {
-		painter.Paint(node, canvas)
-	}
-	// If this child also paints its own children, skip recursive child painting
-	if node.GetData("paintsChildren") == nil {
-		for _, child := range node.Children() {
-			paintNodeRecursive(child, canvas)
-		}
-	}
-	canvas.Restore()
 }
 
 // scrollbarMetrics returns metrics for the shared Scrollbar component.

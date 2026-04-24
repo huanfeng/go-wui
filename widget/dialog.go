@@ -300,7 +300,7 @@ func (p *dialogOverlayPainter) Paint(node *core.Node, canvas core.Canvas) {
 	d.node.SetData("dpiScale", dpi)
 	d.node.SetBounds(core.Rect{X: dialogX, Y: dialogY, Width: dialogW, Height: dialogH})
 	d.node.SetMeasuredSize(core.Size{Width: dialogW, Height: dialogH})
-	paintNodeRecursive(d.node, canvas)
+	core.PaintNodeRecursive(d.node, canvas)
 }
 
 // ---------- dialogOverlayHandler ----------

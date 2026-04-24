@@ -51,27 +51,51 @@ func (g *GridLayout) Measure(node *core.Node, widthSpec, heightSpec core.Measure
 	}
 
 	// Measure each child with cell-sized width and style-aware height
+	// 注意：GridLayout 使用统一单元格尺寸，margin 在单元格内部消耗
 	maxCellH := 0.0
 	childWS := core.MeasureSpec{Mode: core.MeasureModeExact, Size: cellW}
 	for _, child := range visible {
+		margin := child.Margin()
+		marginV := margin.Top + margin.Bottom
+		marginH := margin.Left + margin.Right
+		// 单元格内子节点的可用宽度需减去水平 margin
+		effectiveCellW := cellW - marginH
+		if effectiveCellW < 0 {
+			effectiveCellW = 0
+		}
+		effectiveWS := core.MeasureSpec{Mode: core.MeasureModeExact, Size: effectiveCellW}
 		// Respect child's style Height (e.g. "48dp") via childMeasureSpec
 		childHS := core.MeasureSpec{Mode: core.MeasureModeAtMost, Size: heightSpec.Size}
 		style := child.GetStyle()
 		if style != nil {
-			childHS = childMeasureSpec(heightSpec, 0, dimOrDefault(style, false))
+			childHS = childMeasureSpec(heightSpec, marginV, dimOrDefault(style, false))
 		}
-		sz := MeasureChild(child, childWS, childHS)
-		if sz.Height > maxCellH {
-			maxCellH = sz.Height
+		sz := MeasureChild(child, effectiveWS, childHS)
+		// 单元格高度包含子节点高度及其垂直 margin
+		if sz.Height+marginV > maxCellH {
+			maxCellH = sz.Height + marginV
 		}
 	}
 
 	// All cells have uniform height (tallest cell wins)
-	// Re-measure with exact height
+	// Re-measure with exact height (子节点高度 = 单元格高度 - 垂直 margin)
 	for _, child := range visible {
-		childHS := core.MeasureSpec{Mode: core.MeasureModeExact, Size: maxCellH}
-		MeasureChild(child, childWS, childHS)
+		margin := child.Margin()
+		marginV := margin.Top + margin.Bottom
+		marginH := margin.Left + margin.Right
+		effectiveCellW := cellW - marginH
+		if effectiveCellW < 0 {
+			effectiveCellW = 0
+		}
+		effectiveWS := core.MeasureSpec{Mode: core.MeasureModeExact, Size: effectiveCellW}
+		childH := maxCellH - marginV
+		if childH < 0 {
+			childH = 0
+		}
+		childHS := core.MeasureSpec{Mode: core.MeasureModeExact, Size: childH}
+		MeasureChild(child, effectiveWS, childHS)
 	}
+	_ = childWS // 保留变量以避免编译错误
 
 	totalSpacingV := g.Spacing * float64(rows-1)
 	resultW := availW + paddingH
@@ -122,10 +146,17 @@ func (g *GridLayout) Arrange(node *core.Node, bounds core.Rect) {
 		col := i % cols
 		row := i / cols
 
-		x := padding.Left + float64(col)*(cellW+g.Spacing)
-		y := padding.Top + float64(row)*(maxCellH+g.Spacing)
+		// 单元格左上角坐标
+		cellX := padding.Left + float64(col)*(cellW+g.Spacing)
+		cellY := padding.Top + float64(row)*(maxCellH+g.Spacing)
 
-		child.SetBounds(core.Rect{X: x, Y: y, Width: cellW, Height: maxCellH})
+		// 子节点在单元格内偏移 margin
+		margin := child.Margin()
+		sz := child.MeasuredSize()
+		x := cellX + margin.Left
+		y := cellY + margin.Top
+
+		child.SetBounds(core.Rect{X: x, Y: y, Width: sz.Width, Height: sz.Height})
 
 		if l := child.GetLayout(); l != nil {
 			l.Arrange(child, child.Bounds())

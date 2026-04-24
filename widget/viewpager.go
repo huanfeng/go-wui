@@ -227,7 +227,7 @@ func (p *viewPagerPainter) Paint(node *core.Node, canvas core.Canvas) {
 				l.Arrange(pageNode, pageNode.Bounds())
 			}
 
-			paintNodeRecursive(pageNode, canvas)
+			core.PaintNodeRecursive(pageNode, canvas)
 		}
 	}
 }

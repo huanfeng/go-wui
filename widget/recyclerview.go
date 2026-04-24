@@ -342,7 +342,7 @@ func (p *recyclerViewPainter) Paint(node *core.Node, canvas core.Canvas) {
 		}
 
 		// Paint item
-		paintNodeRecursive(itemNode, canvas)
+		core.PaintNodeRecursive(itemNode, canvas)
 	}
 
 	canvas.Restore()

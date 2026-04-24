@@ -78,12 +78,17 @@ func (f *FlexLayout) Measure(node *core.Node, widthSpec, heightSpec core.Measure
 	}
 
 	for _, child := range visible {
-		childWS := core.MeasureSpec{Mode: core.MeasureModeAtMost, Size: widthSpec.Size - paddingH}
-		childHS := core.MeasureSpec{Mode: core.MeasureModeAtMost, Size: heightSpec.Size - paddingV}
+		// 读取子节点的 margin，margin 由父布局消耗
+		margin := child.Margin()
+		marginH := margin.Left + margin.Right
+		marginV := margin.Top + margin.Bottom
+
+		childWS := core.MeasureSpec{Mode: core.MeasureModeAtMost, Size: widthSpec.Size - paddingH - marginH}
+		childHS := core.MeasureSpec{Mode: core.MeasureModeAtMost, Size: heightSpec.Size - paddingV - marginV}
 		style := child.GetStyle()
 		if style != nil {
-			childWS = childMeasureSpec(widthSpec, paddingH, dimOrDefault(style, true))
-			childHS = childMeasureSpec(heightSpec, paddingV, dimOrDefault(style, false))
+			childWS = childMeasureSpec(widthSpec, paddingH+marginH, dimOrDefault(style, true))
+			childHS = childMeasureSpec(heightSpec, paddingV+marginV, dimOrDefault(style, false))
 		}
 		MeasureChild(child, childWS, childHS)
 	}
@@ -163,29 +168,52 @@ func (f *FlexLayout) Arrange(node *core.Node, bounds core.Rect) {
 
 		for _, child := range line.children {
 			sz := child.MeasuredSize()
+			margin := child.Margin()
+
+			// 计算当前子节点的 margin 在主轴/交叉轴上的分量
+			var mainMarginStart, mainMarginEnd, crossMarginStart, crossMarginEnd float64
+			if f.Orientation == Horizontal {
+				mainMarginStart = margin.Left
+				mainMarginEnd = margin.Right
+				crossMarginStart = margin.Top
+				crossMarginEnd = margin.Bottom
+			} else {
+				mainMarginStart = margin.Top
+				mainMarginEnd = margin.Bottom
+				crossMarginStart = margin.Left
+				crossMarginEnd = margin.Right
+			}
+
 			childMain := f.mainDim(sz)
 			childCross := f.crossDim(sz)
+			// 子节点在行中占用的交叉轴空间（含 margin）
+			childCrossWithMargin := childCross + crossMarginStart + crossMarginEnd
 
-			// Cross-axis alignment
-			crossPos := crossOffset
+			// Cross-axis alignment：在 crossMax 内以 margin 偏移为基础对齐
+			crossPos := crossOffset + crossMarginStart
 			switch f.AlignItems {
 			case FlexAlignCenter:
-				crossPos += (line.crossMax - childCross) / 2
+				crossPos = crossOffset + crossMarginStart + (line.crossMax-childCrossWithMargin)/2
 			case FlexAlignEnd:
-				crossPos += line.crossMax - childCross
+				crossPos = crossOffset + line.crossMax - crossMarginEnd - childCross
 			case FlexAlignStretch:
-				childCross = line.crossMax
+				// 拉伸时子节点填满 crossMax 减去两端 margin
+				childCross = line.crossMax - crossMarginStart - crossMarginEnd
+				if childCross < 0 {
+					childCross = 0
+				}
+				crossPos = crossOffset + crossMarginStart
 			}
 
 			var x, y, w, h float64
 			if f.Orientation == Horizontal {
-				x = padding.Left + mainOffset
+				x = padding.Left + mainOffset + mainMarginStart
 				y = padding.Top + crossPos
 				w = childMain
 				h = childCross
 			} else {
 				x = padding.Left + crossPos
-				y = padding.Top + mainOffset
+				y = padding.Top + mainOffset + mainMarginStart
 				w = childCross
 				h = childMain
 			}
@@ -195,7 +223,8 @@ func (f *FlexLayout) Arrange(node *core.Node, bounds core.Rect) {
 				l.Arrange(child, child.Bounds())
 			}
 
-			mainOffset += childMain + gap
+			// mainOffset 推进时包含子节点主轴尺寸 + 两端主轴 margin + gap
+			mainOffset += mainMarginStart + childMain + mainMarginEnd + gap
 		}
 
 		crossOffset += line.crossMax + f.LineSpacing
@@ -204,6 +233,7 @@ func (f *FlexLayout) Arrange(node *core.Node, bounds core.Rect) {
 }
 
 // buildLines groups children into lines based on wrap and available main space.
+// margin 参与主轴占用空间和交叉轴最大尺寸的计算。
 func (f *FlexLayout) buildLines(children []*core.Node, mainAvail float64) []flexLine {
 	if len(children) == 0 {
 		return nil
@@ -214,8 +244,18 @@ func (f *FlexLayout) buildLines(children []*core.Node, mainAvail float64) []flex
 
 	for _, child := range children {
 		sz := child.MeasuredSize()
-		childMain := f.mainDim(sz)
-		childCross := f.crossDim(sz)
+		margin := child.Margin()
+		// 子节点在主轴上占用的总空间 = 测量尺寸 + 两端 margin
+		var childMainMargin, childCrossMargin float64
+		if f.Orientation == Horizontal {
+			childMainMargin = margin.Left + margin.Right
+			childCrossMargin = margin.Top + margin.Bottom
+		} else {
+			childMainMargin = margin.Top + margin.Bottom
+			childCrossMargin = margin.Left + margin.Right
+		}
+		childMain := f.mainDim(sz) + childMainMargin
+		childCross := f.crossDim(sz) + childCrossMargin
 
 		// Check if wrapping is needed
 		if f.Wrap == FlexWrapOn && len(current.children) > 0 {
